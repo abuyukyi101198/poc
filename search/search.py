@@ -4,6 +4,13 @@ from table import generate_machines, draw_machine_table
 
 filters = ["STATUS", "TAGS", "ZONE", "FABRIC", "CORES", "RAM", "DISKS", "STORAGE"]
 
+def is_cursor_outside_parentheses(input_str, cursor_pos):
+    # Count '(' and ')' before cursor to see if we are inside parentheses
+    before_cursor = input_str[:cursor_pos]
+    open_count = before_cursor.count('(')
+    close_count = before_cursor.count(')')
+    return open_count == close_count
+
 def parse_filters(input_str):
     # Simple regex to match FILTER_NAME(values) e.g. STATUS(deployed,commissioning)
     pattern = r'(\w+)\(([^)]*)\)'
@@ -138,11 +145,18 @@ def search_with_table(stdscr):
 
     while True:
         active_filter, inside_text = extract_active_filter(input_str)
-        if active_filter:
+
+        # Check if the cursor is outside of all filters
+        outside = is_cursor_outside_parentheses(input_str, cursor_pos)
+
+        if active_filter and not outside:
+            # Inside a filter → suggest values
             suggestions = get_suggestions_for_filter(machines, active_filter, inside_text)
         else:
-            text = input_str.strip().upper()
-            suggestions = [f for f in filters if text in f]
+            # Outside a filter → suggest filter names
+            current_word_start = input_str.rfind(' ', 0, cursor_pos) + 1
+            filter_prefix = input_str[current_word_start:cursor_pos].upper()
+            suggestions = [f for f in filters if filter_prefix in f] if filter_prefix else filters
         selected_index = max(0, min(selected_index, len(suggestions) - 1))
 
         # Parse filters and filter machines accordingly
@@ -160,19 +174,29 @@ def search_with_table(stdscr):
         elif key == curses.KEY_DOWN:
             selected_index = min(len(suggestions) - 1, selected_index + 1)
         elif key in (10, 13):  # Enter
-            if active_filter and suggestions:
-                value_to_insert = suggestions[selected_index]
-                before = input_str.rsplit("(", 1)[0] + "("
-                existing_values = input_str.rsplit("(", 1)[1]
-                parts = [p.strip() for p in existing_values.split(",")]
-                parts[-1] = value_to_insert
-                new_inside = ", ".join(parts)
-                input_str = before + new_inside
-                cursor_pos = len(input_str)
-            elif suggestions:
+            if suggestions:
                 selected = suggestions[selected_index]
-                input_str = selected + "("
-                cursor_pos = len(input_str)
+                if active_filter and not is_cursor_outside_parentheses(input_str, cursor_pos):
+                    value_to_insert = suggestions[selected_index]
+                    before = input_str.rsplit("(", 1)[0] + "("
+                    existing_values = input_str.rsplit("(", 1)[1]
+                    parts = [p.strip() for p in existing_values.split(",")]
+                    parts[-1] = value_to_insert
+                    new_inside = ", ".join(parts)
+                    input_str = before + new_inside
+                    cursor_pos = len(input_str)
+                else:
+                    # Outside → replace the current word with the selected filter
+                    current_word_start = input_str.rfind(' ', 0, cursor_pos) + 1
+                    current_word_end = cursor_pos
+
+                    new_filter = selected + "("
+                    input_str = (
+                            input_str[:current_word_start] +
+                            new_filter +
+                            input_str[current_word_end:]
+                    )
+                    cursor_pos = current_word_start + len(new_filter)
         elif key in (curses.KEY_BACKSPACE, 127, 8):
             if cursor_pos > 0:
                 input_str = input_str[:cursor_pos - 1] + input_str[cursor_pos:]
