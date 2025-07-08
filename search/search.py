@@ -1,8 +1,34 @@
 import curses
 import re
 from table import generate_machines, draw_machine_table
+import operator
 
 filters = ["STATUS", "TAGS", "ZONE", "FABRIC", "CORES", "RAM", "DISKS", "STORAGE"]
+
+comparison_ops = {
+    ">=": operator.ge,
+    "<=": operator.le,
+    "!=": operator.ne,
+    ">": operator.gt,
+    "<": operator.lt,
+    "=": operator.eq,
+}
+
+def parse_comparator(value_str):
+    # Try to match the longest operator first (e.g., ">=" before ">")
+    for op_symbol in sorted(comparison_ops.keys(), key=lambda x: -len(x)):
+        if value_str.startswith(op_symbol):
+            try:
+                num = float(value_str[len(op_symbol):].strip())
+                return comparison_ops[op_symbol], num
+            except ValueError:
+                return None, None
+    # Default: treat as equality if it's a plain number
+    try:
+        num = float(value_str)
+        return operator.eq, num
+    except ValueError:
+        return None, None
 
 def is_cursor_outside_parentheses(input_str, cursor_pos):
     # Count '(' and ')' before cursor to see if we are inside parentheses
@@ -29,53 +55,31 @@ def machine_matches(machine, filters):
         if machine_val is None:
             return False
 
-        # Normalize machine_val to list for TAGS, else single item
+        # For list fields like TAGS
         if isinstance(machine_val, list):
-            # Check if any of machine's list values match any filter values (case insensitive substring)
             if not any(any(v.lower() in mv.lower() for mv in machine_val) for v in values):
                 return False
+
+        # For numeric fields with comparator support
+        elif filter_name in {"CORES", "RAM", "DISKS", "STORAGE"}:
+            try:
+                machine_num = float(machine_val)
+                matched = False
+                for v in values:
+                    op_func, num = parse_comparator(v)
+                    if op_func and op_func(machine_num, num):
+                        matched = True
+                        break
+                if not matched:
+                    return False
+            except Exception:
+                return False
+
+        # For other strings (FABRIC, ZONE, STATUS)
         else:
-            # For numeric filters, compare as string or numeric
-            # Try numeric comparison if filter is numeric
-            if filter_name in {"CORES", "RAM", "DISKS"}:
-                # Match if str(int) equals any filter values (as int)
-                try:
-                    machine_num = int(machine_val)
-                    if not any(str(machine_num) == str(int(v)) for v in values if v.isdigit()):
-                        return False
-                except ValueError:
-                    return False
-            elif filter_name == "STORAGE":
-                # storage is float, match if machine storage >= any value (numeric filter)
-                try:
-                    machine_storage = float(machine_val)
-                    # Accept filter values like ">1" or "1.5"
-                    # We'll support only >= for now (simple)
-                    matched = False
-                    for v in values:
-                        v_clean = v.strip()
-                        if v_clean.startswith(">"):
-                            try:
-                                val = float(v_clean[1:])
-                                if machine_storage > val:
-                                    matched = True
-                            except:
-                                pass
-                        else:
-                            try:
-                                val = float(v_clean)
-                                if machine_storage == val:
-                                    matched = True
-                            except:
-                                pass
-                    if not matched:
-                        return False
-                except:
-                    return False
-            else:
-                # String filter, match if any filter value is substring of machine_val
-                if not any(v.lower() in str(machine_val).lower() for v in values):
-                    return False
+            if not any(v.lower() in str(machine_val).lower() for v in values):
+                return False
+
     return True
 
 def extract_active_filter(input_str):
@@ -150,8 +154,13 @@ def search_with_table(stdscr):
         outside = is_cursor_outside_parentheses(input_str, cursor_pos)
 
         if active_filter and not outside:
-            # Inside a filter → suggest values
-            suggestions = get_suggestions_for_filter(machines, active_filter, inside_text)
+            if active_filter in {"CORES", "RAM", "DISKS", "STORAGE"}:
+                # Suggest matching operators only
+                valid_ops = [">", "<", ">=", "<=", "="]
+                inside_text = inside_text.strip()
+                suggestions = [op for op in valid_ops if op.startswith(inside_text)]
+            else:
+                suggestions = get_suggestions_for_filter(machines, active_filter, inside_text)
         else:
             # Outside a filter → suggest filter names
             current_word_start = input_str.rfind(' ', 0, cursor_pos) + 1
