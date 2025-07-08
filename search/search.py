@@ -38,19 +38,55 @@ def is_cursor_outside_parentheses(input_str, cursor_pos):
     return open_count == close_count
 
 def parse_filters(input_str):
-    # Simple regex to match FILTER_NAME(values) e.g. STATUS(deployed,commissioning)
     pattern = r'(\w+)\(([^)]*)\)'
     found = re.findall(pattern, input_str.upper())
 
     filter_dict = {}
+    used_spans = []
+
+    for match in re.finditer(pattern, input_str.upper()):
+        used_spans.append((match.start(), match.end()))
+
+    # Add structured filters
     for filter_name, values_str in found:
         if filter_name in filters:
             values = [v.strip() for v in values_str.split(",") if v.strip()]
             filter_dict[filter_name] = values
+
+    # Extract remaining free text
+    covered = [range(start, end) for start, end in used_spans]
+    free_text_parts = []
+    last = 0
+    for start, end in used_spans:
+        free_text = input_str[last:start].strip()
+        if free_text:
+            free_text_parts.append(free_text)
+        last = end
+    if last < len(input_str):
+        trailing = input_str[last:].strip()
+        if trailing:
+            free_text_parts.append(trailing)
+
+    # Add as __text__ filter
+    if free_text_parts:
+        combined = " ".join(free_text_parts).strip()
+        if combined:
+            filter_dict["__text__"] = [combined]
+
     return filter_dict
 
 def machine_matches(machine, filters):
+    if "__text__" in filters:
+        search_terms = filters["__text__"]
+        fdqn = str(machine.get("FDQN", "")).lower()
+        # All terms must appear somewhere in FDQN (fuzzy match)
+        if not all(any(term.lower() in fdqn for term in search_terms) for term in search_terms):
+            return False
+
     for filter_name, values in filters.items():
+        if filter_name == "__text__":
+            continue  # Already handled
+
         machine_val = machine.get(filter_name)
         if machine_val is None:
             return False
@@ -146,6 +182,9 @@ def search_with_table(stdscr):
     selected_index = 0
 
     machines = generate_machines(10)
+    last_parsed_filters = {}
+    last_filtered_machines = machines
+    last_fdqn_query = ""
 
     while True:
         active_filter, inside_text = extract_active_filter(input_str)
@@ -170,7 +209,30 @@ def search_with_table(stdscr):
 
         # Parse filters and filter machines accordingly
         parsed_filters = parse_filters(input_str)
-        filtered_machines = [m for m in machines if machine_matches(m, parsed_filters)]
+
+        # Extract FDQN search terms (non-filter text)
+        non_filter_parts = re.sub(r'\w+\([^)]+?\)', '', input_str).strip()
+        current_fdqn_query = non_filter_parts.lower()
+
+        filter_just_closed = (
+                input_str.count(")") > "".join(last_parsed_filters.keys()).count(")")
+        )
+
+        fdqn_changed = current_fdqn_query != last_fdqn_query
+
+        if filter_just_closed or fdqn_changed:
+            last_parsed_filters = parsed_filters
+            last_fdqn_query = current_fdqn_query
+
+            # Add FDQN search as pseudo-filter
+            if current_fdqn_query:
+                parsed_filters["__text__"] = current_fdqn_query.split()
+
+            last_filtered_machines = [
+                m for m in machines if machine_matches(m, parsed_filters)
+            ]
+
+        filtered_machines = last_filtered_machines
 
         draw_interface(stdscr, prompt, input_str, cursor_pos, suggestions, selected_index, filtered_machines)
 
