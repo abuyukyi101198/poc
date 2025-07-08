@@ -110,4 +110,5 @@ def main(stdscr):
         if key in (27, ord('q'), ord('Q')):
             break
 
-curses.wrapper(main)
+if __name__ == "__main__":
+    curses.wrapper(main)
