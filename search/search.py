@@ -18,16 +18,21 @@ def draw_interface(stdscr, prompt, input_str, cursor_pos, filtered_filters, sele
     stdscr.addstr(0, len(prompt_text) + 1, input_str + " " * (width - len(prompt_text) - len(input_str) - 2))
     stdscr.move(0, len(prompt_text) + 1 + cursor_pos)
 
-    # Draw filter suggestions (starting from line 1)
-    for idx, f in enumerate(filtered_filters):
+    # Draw filter suggestions
+    reserved_lines = 8  # Reserve 8 lines always
+    for idx in range(reserved_lines):
         y = 1 + idx
-        if y >= height - 15:  # reserve lines for table
+        if y >= height:
             break
-        prefix = "> " if idx == selected_index else "  "
-        stdscr.addstr(y, 0, prefix + f)
+        if idx < len(filtered_filters):
+            f = filtered_filters[idx]
+            prefix = "> " if idx == selected_index else "  "
+            stdscr.addstr(y, len(prompt_text) + 1, prefix + f)
+        else:
+            stdscr.addstr(y, len(prompt_text) + 1, " " * (width - len(prompt_text) - 1))
 
-    # Draw machine table below filters
-    table_start_line = 2 + len(filtered_filters)
+    # Draw machine table
+    table_start_line = 1 + reserved_lines + 1  # +1 for spacing
     draw_machine_table(stdscr, machines, start_line=table_start_line)
 
 def filter_filters(input_str):
