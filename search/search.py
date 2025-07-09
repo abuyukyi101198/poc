@@ -174,12 +174,36 @@ def draw_interface(stdscr, prompt, input_str, cursor_pos, suggestions, selected_
     table_start_line = 1 + reserved_lines + 1
     draw_machine_table(stdscr, machines, start_line=table_start_line)
 
+def filters_to_sql(filters_dict):
+    clauses = []
+    for key, values in filters_dict.items():
+        if key == "__text__":
+            for term in values:
+                clauses.append(f"FDQN LIKE '%{term}%'")
+        elif key in {"CORES", "RAM", "DISKS", "STORAGE"}:
+            for val in values:
+                # Support basic comparison parsing
+                op = "="
+                num = val
+                for symbol in [">=", "<=", ">", "<", "="]:
+                    if val.startswith(symbol):
+                        op = symbol
+                        num = val[len(symbol):]
+                        break
+                clauses.append(f"{key} {op} {num}")
+        else:
+            sub = " OR ".join([f"{key} LIKE '%{v}%'" for v in values])
+            clauses.append(f"({sub})")
+    return " AND ".join(clauses)
+
 def search_with_table(stdscr):
     curses.curs_set(1)
-    prompt = "Search: "
     input_str = ""
+    power_mode_input = ""
     cursor_pos = 0
     selected_index = 0
+    power_mode = False
+    active_filter = {}
 
     machines = generate_machines(10)
     last_parsed_filters = {}
@@ -187,68 +211,86 @@ def search_with_table(stdscr):
     last_fdqn_query = ""
 
     while True:
-        active_filter, inside_text = extract_active_filter(input_str)
+        prompt = "SQL> " if power_mode else "Search: "
 
-        # Check if the cursor is outside of all filters
-        outside = is_cursor_outside_parentheses(input_str, cursor_pos)
-
-        if active_filter and not outside:
-            if active_filter in {"CORES", "RAM", "DISKS", "STORAGE"}:
-                # Suggest matching operators only
-                valid_ops = [">", "<", ">=", "<=", "="]
-                inside_text = inside_text.strip()
-                suggestions = [op for op in valid_ops if op.startswith(inside_text)]
-            else:
-                suggestions = get_suggestions_for_filter(machines, active_filter, inside_text)
+        if power_mode:
+            # In power mode, don't compute suggestions or update table
+            suggestions = []
+            filtered_machines = last_filtered_machines
         else:
-            # Outside a filter → suggest filter names
-            current_word_start = input_str.rfind(' ', 0, cursor_pos) + 1
-            filter_prefix = input_str[current_word_start:cursor_pos].upper()
-            suggestions = [f for f in filters if filter_prefix in f] if filter_prefix else filters
-        selected_index = max(0, min(selected_index, len(suggestions) - 1))
+            active_filter, inside_text = extract_active_filter(input_str)
+            outside = is_cursor_outside_parentheses(input_str, cursor_pos)
 
-        # Parse filters and filter machines accordingly
-        parsed_filters = parse_filters(input_str)
+            if active_filter and not outside:
+                if active_filter in {"CORES", "RAM", "DISKS", "STORAGE"}:
+                    valid_ops = [">", "<", ">=", "<=", "="]
+                    inside_text = inside_text.strip()
+                    suggestions = [op for op in valid_ops if op.startswith(inside_text)]
+                else:
+                    suggestions = get_suggestions_for_filter(machines, active_filter, inside_text)
+            else:
+                current_word_start = input_str.rfind(' ', 0, cursor_pos) + 1
+                filter_prefix = input_str[current_word_start:cursor_pos].upper()
+                suggestions = [f for f in filters if filter_prefix in f] if filter_prefix else filters
 
-        # Extract FDQN search terms (non-filter text)
-        non_filter_parts = re.sub(r'\w+\([^)]+?\)', '', input_str).strip()
-        current_fdqn_query = non_filter_parts.lower()
+            selected_index = max(0, min(selected_index, len(suggestions) - 1))
 
-        filter_just_closed = (
+            # Parse filters and filter machines accordingly
+            parsed_filters = parse_filters(input_str)
+            non_filter_parts = re.sub(r'\w+\([^)]+?\)', '', input_str).strip()
+            current_fdqn_query = non_filter_parts.lower()
+
+            filter_just_closed = (
                 input_str.count(")") > "".join(last_parsed_filters.keys()).count(")")
+            )
+            fdqn_changed = current_fdqn_query != last_fdqn_query
+
+            if filter_just_closed or fdqn_changed:
+                last_parsed_filters = parsed_filters
+                last_fdqn_query = current_fdqn_query
+                if current_fdqn_query:
+                    parsed_filters["__text__"] = current_fdqn_query.split()
+                last_filtered_machines = [
+                    m for m in machines if machine_matches(m, parsed_filters)
+                ]
+
+            filtered_machines = last_filtered_machines
+
+        input_display = power_mode_input if power_mode else input_str
+        draw_interface(
+            stdscr, prompt, input_display, cursor_pos,
+            suggestions, selected_index, filtered_machines
         )
-
-        fdqn_changed = current_fdqn_query != last_fdqn_query
-
-        if filter_just_closed or fdqn_changed:
-            last_parsed_filters = parsed_filters
-            last_fdqn_query = current_fdqn_query
-
-            # Add FDQN search as pseudo-filter
-            if current_fdqn_query:
-                parsed_filters["__text__"] = current_fdqn_query.split()
-
-            last_filtered_machines = [
-                m for m in machines if machine_matches(m, parsed_filters)
-            ]
-
-        filtered_machines = last_filtered_machines
-
-        draw_interface(stdscr, prompt, input_str, cursor_pos, suggestions, selected_index, filtered_machines)
 
         key = stdscr.getch()
 
+        if not power_mode:
+            last_input_before_power_mode = input_str
+
         if key in (27,):  # ESC
             break
-        elif key == curses.KEY_UP:
+        elif key == 9:  # TAB key
+            power_mode = not power_mode
+            if power_mode:
+                # Entering Power User Mode
+                parsed_filters = parse_filters(input_str)
+                non_filter_parts = re.sub(r'\w+\([^)]+?\)', '', input_str).strip()
+                if non_filter_parts:
+                    parsed_filters["__text__"] = non_filter_parts.split()
+                power_mode_input = filters_to_sql(parsed_filters)
+            else:
+                # Exiting Power User Mode, revert to last known input
+                input_str = last_input_before_power_mode
+                cursor_pos = len(input_str)
+        elif not power_mode and key == curses.KEY_UP:
             selected_index = max(0, selected_index - 1)
-        elif key == curses.KEY_DOWN:
+        elif not power_mode and key == curses.KEY_DOWN:
             selected_index = min(len(suggestions) - 1, selected_index + 1)
-        elif key in (10, 13):  # Enter
+        elif not power_mode and key in (10, 13):
             if suggestions:
                 selected = suggestions[selected_index]
                 if active_filter and not is_cursor_outside_parentheses(input_str, cursor_pos):
-                    value_to_insert = suggestions[selected_index]
+                    value_to_insert = selected
                     before = input_str.rsplit("(", 1)[0] + "("
                     existing_values = input_str.rsplit("(", 1)[1]
                     parts = [p.strip() for p in existing_values.split(",")]
@@ -257,17 +299,16 @@ def search_with_table(stdscr):
                     input_str = before + new_inside
                     cursor_pos = len(input_str)
                 else:
-                    # Outside → replace the current word with the selected filter
                     current_word_start = input_str.rfind(' ', 0, cursor_pos) + 1
                     current_word_end = cursor_pos
-
                     new_filter = selected + "("
                     input_str = (
-                            input_str[:current_word_start] +
-                            new_filter +
-                            input_str[current_word_end:]
+                        input_str[:current_word_start] +
+                        new_filter +
+                        input_str[current_word_end:]
                     )
                     cursor_pos = current_word_start + len(new_filter)
+                selected_index = 0
         elif key in (curses.KEY_BACKSPACE, 127, 8):
             if cursor_pos > 0:
                 input_str = input_str[:cursor_pos - 1] + input_str[cursor_pos:]
