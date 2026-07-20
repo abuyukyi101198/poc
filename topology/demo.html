@@ -1,0 +1,801 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Data Center Topology</title>
+  <style>
+    @font-face {
+      font-family: 'Ubuntu';
+      src: url('assets/fonts/f1ea362b-Ubuntu[wdth,wght]-latin-v0.896a.woff2') format('woff2');
+      font-weight: 100 900; font-style: normal;
+    }
+    @font-face {
+      font-family: 'Ubuntu';
+      src: url('assets/fonts/90b59210-Ubuntu-Italic[wdth,wght]-latin-v0.896a.woff2') format('woff2');
+      font-weight: 100 900; font-style: italic;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body, svg text, #hover-panel, #detail-panel, #search, button {
+      font-family: 'Ubuntu', sans-serif;
+    }
+    body { background: #111111; color: #cdcdcd; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+    #header { padding: 8px 16px; background: #1d1d1d; border-bottom: 1px solid #333;
+              display: flex; flex-direction: column; gap: 5px; flex-shrink: 0; }
+    .hrow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    h1 { font-size: 13px; font-weight: 500; color: #a64d79; white-space: nowrap; }
+    #search-wrap { position: relative; }
+    #search { width: 220px; background: #2a2a2a; border: 1px solid #444; color: #cdcdcd;
+               border-radius: 3px; padding: 3px 8px; font-size: 12px; outline: none; }
+    #search:focus { border-color: #a64d79; }
+    #search-dropdown { position: absolute; top: 100%; left: 0; width: 300px;
+                       background: #1d1d1d; border: 1px solid #444; border-radius: 3px;
+                       z-index: 300; display: none; max-height: 200px; overflow-y: auto;
+                       box-shadow: 2px 2px 8px rgba(0,0,0,.5); }
+    #search-dropdown li { list-style: none; padding: 4px 9px; font-size: 11px; cursor: pointer;
+                          border-bottom: 1px solid #2a2a2a; color: #cdcdcd; }
+    #search-dropdown li:hover { background: #2a3a50; }
+    #search-dropdown .sr-type { color: #666; font-size: 10px; margin-left: 4px; }
+    .tg { font-size: 11px; color: #888; display: flex; align-items: center; gap: 3px; cursor: pointer; }
+    .tg input { accent-color: #a64d79; }
+    .tg-sep { width: 1px; height: 14px; background: #333; margin: 0 3px; }
+    .ctrl-label { font-size: 10px; color: #555; text-transform: uppercase; letter-spacing: .05em; }
+    input[type=range].slim { width: 90px; accent-color: #a64d79; }
+    input[type=number].sm { width: 40px; background: #2a2a2a; border: 1px solid #444; color: #cdcdcd;
+                            border-radius: 3px; padding: 1px 3px; font-size: 12px; }
+    #main { display: flex; flex: 1; overflow: hidden; min-height: 0; }
+    #svg-container { flex: 1; overflow: hidden; cursor: grab; background: #111111; }
+    #svg-container:active { cursor: grabbing; }
+    svg { display: block; width: 100%; height: 100%; }
+    #legend { width: 155px; background: #1d1d1d; border-left: 1px solid #333;
+              padding: 10px; font-size: 11px; flex-shrink: 0; overflow-y: auto; }
+    #legend h2 { font-size: 11px; font-weight: 500; color: #a64d79; margin-bottom: 7px; }
+    .li { display: flex; align-items: center; gap: 5px; margin-bottom: 5px; color: #888; }
+    .lsq { width: 8px; height: 8px; border-radius: 1px; flex-shrink: 0; }
+    .lln { width: 16px; height: 1.5px; flex-shrink: 0; }
+    #hover-panel { position: fixed; background: #1d1d1d; border: 1px solid #444; border-radius: 4px;
+                   padding: 7px 10px; font-size: 11px; pointer-events: none; opacity: 0;
+                   transition: opacity 0.12s; z-index: 100; color: #cdcdcd; max-width: 280px;
+                   line-height: 1.6; box-shadow: 2px 2px 8px rgba(0,0,0,.5); }
+    #hover-panel .hp-id { font-weight: 500; color: #a64d79; font-size: 13px; margin-bottom: 3px; }
+    .hp-row { display: flex; gap: 6px; }
+    .hp-key { color: #666; min-width: 58px; flex-shrink: 0; }
+    #detail-panel { display: none; position: fixed; right: 160px; top: 56px; bottom: 14px; width: 280px;
+                    background: #1d1d1d; border: 1px solid #333; border-radius: 6px; padding: 12px;
+                    font-size: 12px; z-index: 250; color: #cdcdcd; overflow-y: auto;
+                    box-shadow: -2px 0 12px rgba(0,0,0,.5); }
+    #dp-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;
+                 padding-bottom: 8px; border-bottom: 1px solid #333; }
+    #dp-title { font-weight: 500; color: #a64d79; font-size: 15px; }
+    #dp-close { background: none; border: none; color: #555; cursor: pointer; font-size: 16px; }
+    #dp-close:hover { color: #cdcdcd; }
+    .dp-sec { font-size: 10px; color: #555; text-transform: uppercase; letter-spacing: .05em; margin: 8px 0 3px; }
+    .dp-row { display: flex; justify-content: space-between; border-bottom: 1px solid #2a2a2a; padding: 2px 0; }
+    .dp-key { color: #666; }
+    /* SVG arcs — transparent fill for hit areas */
+    path.rackd-arc, path.sw-arc { stroke-width: 1; fill: transparent; cursor: pointer;
+                                   transition: fill 80ms ease, stroke 80ms ease; }
+    rect.srv-rect { fill: transparent; stroke-width: 1; cursor: pointer; transition: fill 80ms ease; }
+    .psq-g { cursor: pointer; }
+    .psq-g rect.psq { transition: fill 80ms ease, stroke 80ms ease; }
+    .vis-path { pointer-events: none; }
+    .path-dimmed { opacity: 0.08 !important; pointer-events: none; transition: opacity 200ms ease; }
+    .path-active  { opacity: 1    !important; transition: opacity 200ms ease; }
+    .filter-hidden { opacity: 0 !important; pointer-events: none !important; }
+    /* Rack labels — radial/spoke style, clickable */
+    text.rack-lbl { font-size: 8px; font-weight: 400; cursor: pointer;
+                    dominant-baseline: middle; transition: fill 80ms ease; }
+    text.rack-lbl:hover { fill: #a64d79 !important; }
+    /* Port labels */
+    text.port-lbl { font-size: 7px; fill: #888; pointer-events: none;
+                    text-anchor: middle; dominant-baseline: hanging; }
+  </style>
+</head>
+<body>
+<div id="header">
+  <div class="hrow">
+    <h1>🖧 Data Center Topology</h1>
+    <div id="search-wrap">
+      <input id="search" placeholder="Search racks, switches, servers…" autocomplete="off">
+      <ul id="search-dropdown"></ul>
+    </div>
+    <div class="tg-sep"></div>
+    <span class="ctrl-label">Racks:</span>
+    <input type="range" id="rack-slider" class="slim" min="4" max="24" value="12">
+    <input type="number" id="rack-count" class="sm" min="4" max="24" value="12">
+  </div>
+  <div class="hrow">
+    <span class="ctrl-label">Layers:</span>
+    <label class="tg"><input type="checkbox" id="toggle-redundant" checked> Redundant</label>
+    <label class="tg"><input type="checkbox" id="toggle-rackd" checked> Rack Ctlrs</label>
+    <label class="tg"><input type="checkbox" id="toggle-data" checked> Data</label>
+    <label class="tg"><input type="checkbox" id="toggle-mgmt" checked> Mgmt</label>
+    <label class="tg"><input type="checkbox" id="toggle-servers" checked> Servers</label>
+    <label class="tg"><input type="checkbox" id="toggle-ports" checked> Port links</label>
+    <div class="tg-sep"></div>
+    <span class="ctrl-label">Filters:</span>
+    <label class="tg"><input type="checkbox" id="f-redundant"> Redundant only</label>
+    <label class="tg"><input type="checkbox" id="f-data-only"> Data only</label>
+    <label class="tg"><input type="checkbox" id="f-mgmt-only"> Mgmt only</label>
+  </div>
+</div>
+<div id="main">
+  <div id="svg-container">
+    <svg id="viz"></svg>
+  </div>
+  <div id="legend">
+    <h2>Legend</h2>
+    <div class="li"><div class="lsq" style="background:#a64d79"></div>Region</div>
+    <div class="li"><div class="lsq" style="background:#a64d79;opacity:.5"></div>Rackd uplink</div>
+    <div class="li"><div class="lsq" style="background:#0e8420"></div>Data port</div>
+    <div class="li"><div class="lsq" style="background:#e88527"></div>Mgmt port</div>
+    <div class="li"><div style="width:9px;height:9px;border:1px solid #666;flex-shrink:0"></div>Rackd band</div>
+    <div class="li"><div style="width:9px;height:9px;border:1px solid #0e8420;flex-shrink:0"></div>Data switch</div>
+    <div class="li"><div style="width:9px;height:9px;border:1px solid #e88527;flex-shrink:0"></div>Mgmt switch</div>
+    <hr style="border-color:#333;margin:6px 0">
+    <div class="li"><div class="lln" style="background:#999"></div>A: RC→Rackd</div>
+    <div class="li"><div class="lln" style="background:#0e8420"></div>B/C: Data</div>
+    <div class="li"><div class="lln" style="background:#e88527"></div>B/C: Mgmt</div>
+    <hr style="border-color:#333;margin:6px 0">
+    <div style="color:#555;font-size:10px;line-height:1.7">
+      <p>Scroll/pinch to zoom</p><p>Click to select path</p><p>Click label/bg to clear</p>
+    </div>
+  </div>
+</div>
+<div id="hover-panel"><div class="hp-id" id="hp-id"></div><div id="hp-body"></div></div>
+<div id="detail-panel">
+  <div id="dp-header"><span id="dp-title"></span><button id="dp-close">×</button></div>
+  <div id="dp-content"></div>
+</div>
+
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<script>
+(() => {
+  // ── Canonical dark palette ─────────────────────────────────────────────────────
+  const C = {
+    AUBERGINE: '#a64d79', COOL_GREY: '#999999', MID_GREY: '#666666',
+    LIGHT_GREY: '#444444', DATA_COLOR: '#0e8420', MGMT_COLOR: '#e88527',
+    HOVER_FILL: '#3c6faa', ACTIVE_STROKE: '#ffffff',
+    TEXT_PRIMARY: '#cdcdcd', TEXT_SECONDARY: '#888888',
+  };
+
+  // ── Fixed visual constants ─────────────────────────────────────────────────────
+  const PORT_SZ  = 5;   // rendered port square size (px) — Amendment 11
+  const PORT_GAP = 3;   // min gap for density computation (px)
+  const MIN_PORT_SZ = 3;
+
+  // ── Dynamic radii (recomputed each render from window dimensions) ──────────────
+  let W, H, cx, cy, HALF, S;      // S = scale factor relative to HALF=350
+  let rcS, RC_PORT_R;
+  let R0_INNER, R0_OUTER, R0_MID;
+  let R2_INNER, R2_OUTER, R2_MID;
+  let R_SRV_BASE, SRV_P0_R, R_SERVER_MAX, R_LABEL, R_LABEL_SEP;
+
+  function computeRadii() {
+    W    = window.innerWidth;
+    H    = window.innerHeight;
+    cx   = W / 2;
+    cy   = H / 2;
+    HALF = Math.min(W, H) / 2;
+    S    = HALF / 350;          // scale factor (1.0 at min-dim=700)
+
+    rcS        = 13 * S;
+    RC_PORT_R  = 22 * S;
+    R0_INNER   = 30 * S;        // rackd inner
+    R0_OUTER   = R0_INNER + 12*S; // rackd outer (12px band)
+    R0_MID     = R0_INNER + 6*S;  // flat port-row midline
+    R2_INNER   = R0_OUTER + 8*S;  // switch inner
+    R2_OUTER   = R2_INNER + 16*S; // switch outer (16px band)
+    R2_MID     = (R2_INNER + R2_OUTER) / 2;
+    R_SRV_BASE = R2_OUTER + 12*S; // server rects base
+    SRV_P0_R   = R_SRV_BASE + PORT_SZ / 2;
+    // Max server rect length: up to 4 ports per server
+    const MAX_SRV_LEN = 10*S + 4*(PORT_SZ + PORT_GAP) + 2*S;
+    R_SERVER_MAX = R_SRV_BASE + MAX_SRV_LEN;
+    R_LABEL      = R_SERVER_MAX + 10*S; // beyond all server rects
+    R_LABEL_SEP  = R_LABEL - 6*S;      // separator arc
+  }
+
+  // ── State ──────────────────────────────────────────────────────────────────────
+  let currentTopology = null;
+  let selectedId = null, selectedType = null;
+  let searchEntities = [], hovTimeout = null;
+  const filters = { redundantOnly:false, dataOnly:false, mgmtOnly:false };
+
+  // ── Helpers ───────────────────────────────────────────────────────────────────
+  function polarAbs(a, r) { return { x: cx + r*Math.sin(a), y: cy - r*Math.cos(a) }; }
+
+  // Port wrapping layout — up to 2 concentric rows (Amendment 11)
+  function wrappedPortPositions(ports, arcStart, arcEnd, bandMidRadius) {
+    if (!ports.length) return [];
+    const arcSpan  = arcEnd - arcStart;
+    const pad      = Math.min(arcSpan * 0.1, 0.04);
+    const usable   = Math.max(arcSpan - 2*pad, arcSpan * 0.5);
+    const arcLen   = bandMidRadius * usable;
+    const maxPerRow = Math.max(1, Math.floor(arcLen / (PORT_SZ + PORT_GAP)));
+    const rowCount  = Math.min(2, Math.ceil(ports.length / maxPerRow));
+    const perRow    = Math.ceil(ports.length / rowCount);
+
+    return ports.map((port, i) => {
+      const row      = Math.floor(i / perRow);
+      const col      = i % perRow;
+      const rowR     = bandMidRadius - row * (PORT_SZ + 2*S);
+      const colCount = (row < rowCount - 1) ? perRow : ports.length - row * perRow;
+      const t        = colCount > 1 ? col / (colCount - 1) : 0.5;
+      const angle    = arcStart + pad + t * usable;
+      return { angle, radius: rowR, ...polarAbs(angle, rowR) };
+    });
+  }
+
+  // Simple single-row positions (used for server ports, region ports)
+  function arcPortPositions(sa, ea, n, r) {
+    if (!n) return [];
+    const span = ea - sa, pad = Math.min(span*.1, .05), use = span - 2*pad;
+    return d3.range(n).map(i => {
+      const t = n > 1 ? i/(n-1) : .5, a = sa + pad + t*use;
+      return { angle:a, ...polarAbs(a, r) };
+    });
+  }
+
+  // Radial label transform (Amendment 11 §1)
+  function labelTransform(midAngle) {
+    const lx  = R_LABEL * Math.sin(midAngle);
+    const ly  = -R_LABEL * Math.cos(midAngle);
+    const deg = midAngle * 180 / Math.PI;
+    const flip = midAngle > Math.PI;
+    return { lx, ly, rotate: flip ? deg + 180 : deg, anchor: flip ? 'end' : 'start' };
+  }
+
+  // All bundle lines use beta(0.75)
+  const bundleLine = d3.line().x(d=>d.x).y(d=>d.y).curve(d3.curveBundle.beta(0.75));
+  function bundleCtrl(p0, p1, sign) {
+    const dx=p1.x-p0.x, dy=p1.y-p0.y, len=Math.hypot(dx,dy)||1;
+    const perp={x:dy/len,y:-dx/len}, mid={x:(p0.x+p1.x)/2,y:(p0.y+p1.y)/2};
+    return { x:mid.x+perp.x*sign, y:mid.y+perp.y*sign };
+  }
+  function swSrvPoints(from, to) {
+    const mid = {x:(from.x+to.x)/2, y:(from.y+to.y)/2}, pull=0.15;
+    return [from, {x:mid.x+(cx-mid.x)*pull, y:mid.y+(cy-mid.y)*pull}, to];
+  }
+
+  // ── Rackd grouping ────────────────────────────────────────────────────────────
+  function rackdGrouping(N) {
+    const g=[]; let i=0;
+    while(i<N){if(i%3===1&&i+1<N){g.push([i,i+1]);i+=2;}else{g.push([i]);i++;}}
+    return g;
+  }
+  function rackdArcSpan(rackd, rackArcById) {
+    const arcs = rackd.racks.map(id=>rackArcById[id]).filter(Boolean);
+    if (!arcs.length) return {startAngle:0,endAngle:0};
+    return {startAngle:Math.min(...arcs.map(a=>a.startAngle)),endAngle:Math.max(...arcs.map(a=>a.endAngle))};
+  }
+
+  // ── Data generator ────────────────────────────────────────────────────────────
+  function generateData(N) {
+    const rcId='region-01', rcPorts=[];
+    const racks = d3.range(N).map(i => {
+      const rackId=`rack-${String(i+1).padStart(2,'0')}`;
+      const srvCount=4+((i*5)%8), dataCnt=1+(i%3===2?1:0);
+      const mgmtCnt=i%7===6?0:1+(i%4===3?1:0);
+      const servers = d3.range(srvCount).map(s => {
+        const srvId=`${rackId}-srv-${String(s+1).padStart(2,'0')}`;
+        const ports=[];
+        for(let di=0;di<dataCnt;di++)
+          ports.push({id:`${srvId}-nic${di}`,label:`eth${di}`,type:'data',connectedTo:`${rackId}-sw-data-${di}-p${s+1}`});
+        for(let mi=0;mi<mgmtCnt;mi++)
+          ports.push({id:`${srvId}-bmc${mi}`,label:`bmc${mi}`,type:'mgmt',connectedTo:`${rackId}-sw-mgmt-${mi}-p${s+1}`});
+        return {id:srvId, name:`srv-${String(s+1).padStart(2,'0')}`, ports};
+      });
+      const switches=[];
+      for(let di=0;di<dataCnt;di++){
+        const swId=`${rackId}-sw-data-${di}`;
+        switches.push({id:swId,type:'data',typeIndex:di,
+          uplinkPort:{id:`${swId}-up0`,label:'uplink0',connectedTo:null},
+          downlinkPorts:servers.map((srv,s)=>({id:`${swId}-p${s+1}`,label:`eth${s+1}`,connectedTo:`${srv.id}-nic${di}`}))});
+      }
+      for(let mi=0;mi<mgmtCnt;mi++){
+        const swId=`${rackId}-sw-mgmt-${mi}`;
+        switches.push({id:swId,type:'mgmt',typeIndex:mi,
+          uplinkPort:{id:`${swId}-up0`,label:'uplink0',connectedTo:null},
+          downlinkPorts:servers.map((srv,s)=>({id:`${swId}-p${s+1}`,label:`ipmi${s+1}`,connectedTo:`${srv.id}-bmc${mi}`}))});
+      }
+      return {id:rackId, name:`Rack ${String(i+1).padStart(2,'0')}`, rackdId:null, switches, servers};
+    });
+    racks.sort((a,b)=>a.id.localeCompare(b.id));
+    const rackById = Object.fromEntries(racks.map(r=>[r.id,r]));
+    const rackControllers = rackdGrouping(N).map((group,gi) => {
+      const rackdId=`rackd-${String(gi+1).padStart(2,'0')}`;
+      const isDual=group.length>1;
+      const groupRackIds=group.map(ri=>`rack-${String(ri+1).padStart(2,'0')}`);
+      const uplinkCnt=isDual?2:(gi%3===0?2:1);
+      const uplinkPorts=d3.range(uplinkCnt).map(ui=>{
+        const rpId=`${rcId}-p${rcPorts.length+1}`, upId=`${rackdId}-up${ui}`;
+        rcPorts.push({id:rpId,label:`eth${rcPorts.length}`,connectedTo:upId});
+        return {id:upId,label:`uplink${ui}`,connectedTo:rpId};
+      });
+      const downlinkPorts=[];
+      groupRackIds.forEach(rackId=>{
+        const rack=rackById[rackId];if(!rack)return;
+        rack.rackdId=rackdId;
+        rack.switches.forEach(sw=>{
+          const dnId=`${rackdId}-dn${downlinkPorts.length}`;
+          downlinkPorts.push({id:dnId,label:`dn${downlinkPorts.length}`,connectedTo:sw.uplinkPort.id,swType:sw.type});
+          sw.uplinkPort.connectedTo=dnId;
+        });
+      });
+      return {id:rackdId,name:`Rack Controller ${String(gi+1).padStart(2,'0')}`,racks:groupRackIds,uplinkPorts,downlinkPorts};
+    });
+    return {regionController:{id:rcId,name:'Region Controller',ports:rcPorts},rackControllers,racks};
+  }
+
+  // ── Arc computations ──────────────────────────────────────────────────────────
+  const rackPie = d3.pie().value(()=>1).sort(null).padAngle(0.014);
+  function switchArcsForRack(ra) {
+    if (!ra.data.switches.length) return [];
+    const pie = d3.pie().value(()=>1).sort(null).startAngle(ra.startAngle).endAngle(ra.endAngle).padAngle(0.008);
+    const arcs = pie(ra.data.switches);
+    arcs.forEach(a=>{a.rackId=ra.data.id;a.rackdId=ra.data.rackdId;});
+    return arcs;
+  }
+
+  // ── Port positions (uses wrappedPortPositions for rackd and switch) ───────────
+  function computePortData(regionController, rackControllers, racks, rackArcs, allSwArcs) {
+    const portPos = new Map();
+    const rackArcById = Object.fromEntries(rackArcs.map(a=>[a.data.id,a]));
+    const regPorts=[], rackdPorts=[], swPorts=[], srvRects=[];
+
+    // Region ports (single row at RC_PORT_R)
+    regionController.ports.forEach(port => {
+      const rackdId = port.connectedTo.replace(/-up\d+$/,'');
+      const rackd   = rackControllers.find(r=>r.id===rackdId); if(!rackd)return;
+      const span    = rackdArcSpan(rackd, rackArcById);
+      const mid     = (span.startAngle+span.endAngle)/2;
+      const portIdx = parseInt(port.connectedTo.match(/up(\d+)$/)?.[1]??'0');
+      const angle   = mid + (rackd.uplinkPorts.length>1 ? (portIdx===0?-0.05:0.05) : 0);
+      const pos     = {angle, ...polarAbs(angle, RC_PORT_R)};
+      portPos.set(port.id, pos);
+      regPorts.push({portId:port.id,label:port.label,connectedTo:port.connectedTo,
+        portIdx,rackIds:rackd.racks,rackdId:rackd.id,...pos});
+    });
+
+    // Rackd ports — flat single row with wrapping (Amendment 11 §4)
+    rackControllers.forEach(rackd => {
+      const span = rackdArcSpan(rackd, rackArcById);
+      const allPorts = [
+        ...rackd.uplinkPorts.map(p=>({...p, portKind:'uplink', swType:null})),
+        ...rackd.downlinkPorts.map(p=>({...p, portKind:'downlink'}))
+      ];
+      const positions = wrappedPortPositions(allPorts, span.startAngle, span.endAngle, R0_MID);
+      positions.forEach((pos,i) => {
+        const port = allPorts[i];
+        portPos.set(port.id, pos);
+        rackdPorts.push({portId:port.id,label:port.label,connectedTo:port.connectedTo,
+          portKind:port.portKind, swType:port.swType||null,
+          rackIds:rackd.racks, rackdId:rackd.id, ...pos});
+      });
+    });
+
+    // Switch ports — wrapped (Amendment 11 §4)
+    allSwArcs.forEach(sa => {
+      const sw  = sa.data;
+      const allSwPorts = [sw.uplinkPort, ...sw.downlinkPorts];
+      const positions  = wrappedPortPositions(allSwPorts, sa.startAngle, sa.endAngle, R2_MID);
+      positions.forEach((pos, i) => {
+        const port     = allSwPorts[i];
+        const portType = i === 0 ? 'uplink' : 'downlink';
+        portPos.set(port.id, pos);
+        swPorts.push({portId:port.id, label:port.label, connectedTo:port.connectedTo,
+          portType, swType:sw.type, rackId:sa.rackId, rackdId:sa.rackdId, ...pos});
+      });
+    });
+
+    // Server rects — distributed across rack span
+    rackArcs.forEach(ra => {
+      const rack=ra.data, n=rack.servers.length; if(!n) return;
+      const span=ra.endAngle-ra.startAngle, pad=span*.03, use=span-2*pad, slot=use/n;
+      rack.servers.forEach((srv,i) => {
+        const angle   = ra.startAngle + pad + (i+.5)*slot;
+        const baseAbs = polarAbs(angle, R_SRV_BASE);
+        const sorted  = [...srv.ports].sort((a,b)=>a.type===b.type?0:a.type==='data'?-1:1);
+        sorted.forEach((p,pi) => portPos.set(p.id, {angle,...polarAbs(angle, SRV_P0_R+pi*(PORT_SZ+PORT_GAP))}));
+        const srvLen  = 10*S + sorted.length*(PORT_SZ+PORT_GAP) + 2*S;
+        srvRects.push({id:srv.id, name:srv.name, rackId:rack.id, rackdId:rack.rackdId, angle,
+          baseX:baseAbs.x, baseY:baseAbs.y, srvLen, srv,
+          ports:sorted.map((p,pi)=>({portId:p.id,label:p.label,type:p.type,connectedTo:p.connectedTo,
+            localY:10*S+pi*(PORT_SZ+PORT_GAP)}))});
+      });
+    });
+
+    return {portPos, rackArcById, regPorts, rackdPorts, swPorts, srvRects};
+  }
+
+  // ── SVG setup ─────────────────────────────────────────────────────────────────
+  const svg   = d3.select('#viz');
+  const rootG = svg.append('g').attr('class','root-g');
+  svg.on('click', ()=>{clearSelection();hideDetailPanel();});
+
+  // Layers (no layer-rack-ring per Amendment 10)
+  const lBunA  = rootG.append('g').attr('class','layer-region-rack-links');
+  const lBunB  = rootG.append('g').attr('class','layer-rack-switch-links');
+  const lBunC  = rootG.append('g').attr('class','layer-switch-server-links');
+  const lRackd = rootG.append('g').attr('class','layer-rackd-ring');
+  const lSw    = rootG.append('g').attr('class','layer-switch-ring');
+  const lSrv   = rootG.append('g').attr('class','layer-server-bars');
+  const lLabels= rootG.append('g').attr('class','layer-rack-labels');
+  const lRC    = rootG.append('g').attr('class','layer-region-node');
+
+  // Region node elements (positions updated each render)
+  const rcRect = lRC.append('rect').attr('rx',4)
+    .attr('fill',C.AUBERGINE).attr('stroke',C.AUBERGINE).attr('stroke-width',1)
+    .on('click',e=>{e.stopPropagation();selectEntity('region-01','region');})
+    .on('mouseover',e=>showHover(e,'region',{id:'region-01',name:'Region Controller'}))
+    .on('mousemove',moveHover).on('mouseout',queueHideHover);
+  const rcText = lRC.append('text').attr('text-anchor','middle').attr('fill','#fff').attr('pointer-events','none').text('RC');
+  const lRCPorts = lRC.append('g').attr('class','rc-ports');
+
+  // ── Zoom — pan/zoom navigation only, no LOD (Amendment 11 §2) ─────────────────
+  const zoomBehavior = d3.zoom().scaleExtent([0.2,8]).on('zoom', ({transform}) => {
+    rootG.attr('transform', transform);
+    // No LOD class swapping
+  });
+  svg.call(zoomBehavior);
+
+  function animateZoomTo(x, y, scale) {
+    svg.transition().duration(600).ease(d3.easeCubicInOut)
+      .call(zoomBehavior.transform, d3.zoomIdentity.translate(cx-x*scale, cy-y*scale).scale(scale));
+  }
+
+  // ── Bundle renderer (vis path + 8px hit path) ─────────────────────────────────
+  function renderBundle(layer, gClass, visClass, data, keyFn, pathFn, visStrokeFn) {
+    const gs = layer.selectAll(`g.${gClass}`).data(data, keyFn).join('g').attr('class', gClass);
+    gs.selectAll(`path.${visClass}`).data(d=>[d]).join('path')
+      .attr('class',`${visClass} vis-path`).attr('fill','none')
+      .attr('stroke',visStrokeFn).attr('stroke-width',0.9).attr('opacity',0.45).attr('d',pathFn);
+    gs.selectAll(`path.${visClass}-hit`).data(d=>[d]).join('path')
+      .attr('class',`${visClass}-hit`).attr('fill','none')
+      .attr('stroke','transparent').attr('stroke-width',8)
+      .style('pointer-events','stroke').attr('d',pathFn);
+    gs.on('mouseover',function(ev,d){
+        d3.select(this).select('.vis-path').attr('stroke',C.HOVER_FILL).attr('opacity',0.85);
+        showHover(ev,'bundle',d);
+      })
+      .on('mouseout',function(ev,d){
+        d3.select(this).select('.vis-path').attr('stroke',visStrokeFn(d)).attr('opacity',0.45);
+        queueHideHover();
+      })
+      .on('mousemove',moveHover);
+    return gs;
+  }
+
+  // ── Port squares renderer with hover fills ────────────────────────────────────
+  function portSquares(layer, cssClass, data, fillFn, strokeFn) {
+    // layer is translated to (cx,cy); positions are absolute → subtract cx,cy
+    const gs = layer.selectAll(`g.psq-g.${cssClass}`).data(data, d=>d.portId).join('g')
+      .attr('class', `psq-g ${cssClass}`)
+      .attr('transform', d => `translate(${d.x-cx},${d.y-cy}) rotate(${d.angle*180/Math.PI})`);
+    gs.selectAll('rect.psq').data(d=>[d]).join('rect').attr('class','psq')
+      .attr('x',-PORT_SZ/2).attr('y',-PORT_SZ/2).attr('width',PORT_SZ).attr('height',PORT_SZ).attr('rx',1)
+      .attr('fill',fillFn).attr('stroke',strokeFn||'none').attr('stroke-width',1);
+    gs.on('mouseover',function(ev,d){
+        d3.select(this).select('rect.psq').attr('fill',C.HOVER_FILL).attr('stroke',C.ACTIVE_STROKE).attr('stroke-width',1.5);
+        showHover(ev,'port',d);
+      })
+      .on('mouseout',function(ev,d){
+        d3.select(this).select('rect.psq').attr('fill',fillFn(d)).attr('stroke',strokeFn?strokeFn(d):'none').attr('stroke-width',1);
+        queueHideHover();
+      })
+      .on('mousemove',moveHover);
+    return gs;
+  }
+
+  // ── Main render ───────────────────────────────────────────────────────────────
+  function render(topology, animated) {
+    currentTopology = topology;
+
+    // Recompute all dynamic radii from current window size (Amendment 11 §3)
+    computeRadii();
+
+    // Update SVG viewBox to fill viewport
+    svg.attr('viewBox', `0 0 ${W} ${H}`);
+
+    // Update translated layer origins
+    lRackd.attr('transform', `translate(${cx},${cy})`);
+    lSw   .attr('transform', `translate(${cx},${cy})`);
+    lLabels.attr('transform', `translate(${cx},${cy})`);
+
+    // Update region node position
+    rcRect.attr('x',cx-rcS).attr('y',cy-rcS).attr('width',2*rcS).attr('height',2*rcS);
+    rcText.attr('x',cx).attr('y',cy+3).attr('font-size',Math.max(8,9*S));
+
+    const {regionController, rackControllers, racks} = topology;
+    // rackArcs computed for switch subdivision; not rendered as arcs
+    const rackArcs  = rackPie(racks);
+    const allSwArcs = rackArcs.flatMap(switchArcsForRack);
+    const {portPos, rackArcById, regPorts, rackdPorts, swPorts, srvRects} =
+      computePortData(regionController, rackControllers, racks, rackArcs, allSwArcs);
+
+    searchEntities = buildSearchIndex(topology);
+    const DUR = animated ? 350 : 0;
+
+    // Arc generators (recreated with updated radii)
+    const swArcGen    = d3.arc().innerRadius(R2_INNER).outerRadius(R2_OUTER);
+    const rackdArcGen = d3.arc().innerRadius(R0_INNER).outerRadius(R0_OUTER)
+      .startAngle(d=>d.startAngle).endAngle(d=>d.endAngle);
+
+    // Separator arc (updated position)
+    lLabels.selectAll('path.sep-arc').data([null]).join('path').attr('class','sep-arc')
+      .attr('d', d3.arc().innerRadius(R_LABEL_SEP).outerRadius(R_LABEL_SEP).startAngle(0).endAngle(2*Math.PI)())
+      .attr('fill','none').attr('stroke',C.LIGHT_GREY).attr('stroke-width',0.5);
+
+    // ── Bundle A ─────────────────────────────────────────────────────────────
+    const bunAData = rackControllers.flatMap(rackd =>
+      rackd.uplinkPorts.map((port,pi) => ({
+        id:port.id, rackIds:rackd.racks, rackdId:rackd.id, portIdx:pi,
+        isRedundant:rackd.uplinkPorts.length>1,
+        from:portPos.get(port.connectedTo), to:portPos.get(port.id)
+      })).filter(d=>d.from&&d.to)
+    );
+    renderBundle(lBunA,'bun-a-g','bun-a',bunAData,d=>d.id,
+      d=>{const{from:f,to}=d;
+        if(!d.isRedundant)return bundleLine([f,{x:(f.x+to.x)/2+(cy-f.y)*.05,y:(f.y+to.y)/2+(cx-f.x)*.05},to]);
+        return bundleLine([f,bundleCtrl(f,to,d.portIdx===0?13*S:-13*S),to]);},
+      ()=>C.COOL_GREY);
+
+    // ── Bundle B ─────────────────────────────────────────────────────────────
+    const bunBData = rackControllers.flatMap(rackd =>
+      rackd.downlinkPorts.map(port => ({
+        id:`${port.id}-b`, rackIds:rackd.racks, rackdId:rackd.id, swType:port.swType,
+        from:portPos.get(port.id), to:portPos.get(port.connectedTo)
+      })).filter(d=>d.from&&d.to)
+    );
+    renderBundle(lBunB,'bun-b-g','bun-b',bunBData,d=>d.id,
+      d=>{const{from:f,to}=d;const mid={x:(f.x+to.x)/2+(cx-f.x)*.08,y:(f.y+to.y)/2+(cy-f.y)*.08};return bundleLine([f,mid,to]);},
+      d=>d.swType==='data'?C.DATA_COLOR:C.MGMT_COLOR);
+
+    // ── Bundle C ─────────────────────────────────────────────────────────────
+    const bunCData = allSwArcs.flatMap(sa =>
+      sa.data.downlinkPorts.map(port => ({
+        id:`${port.id}-c`, rackId:sa.rackId, rackdId:sa.rackdId, swType:sa.data.type,
+        from:portPos.get(port.id), to:portPos.get(port.connectedTo)
+      })).filter(d=>d.from&&d.to)
+    );
+    renderBundle(lBunC,'bun-c-g','bun-c',bunCData,d=>d.id,
+      d=>bundleLine(swSrvPoints(d.from,d.to)),
+      d=>d.swType==='data'?C.DATA_COLOR:C.MGMT_COLOR);
+
+    // ── Rackd arcs + flat port row ────────────────────────────────────────────
+    const rackdArcData = rackControllers.map(rackd => ({
+      id:rackd.id, name:rackd.name, rackIds:rackd.racks, rackdId:rackd.id, rackd,
+      ...rackdArcSpan(rackd, rackArcById)
+    }));
+    lRackd.selectAll('path.rackd-arc').data(rackdArcData, d=>d.id).join('path')
+      .attr('class','rackd-arc').attr('fill','transparent').attr('stroke',C.MID_GREY).attr('d',rackdArcGen)
+      .on('click',(ev,d)=>{ev.stopPropagation();selectEntity(d.id,'rackd');showDetailPanel(d.rackd,'rackd');})
+      .on('mouseover',function(ev,d){d3.select(this).attr('stroke',C.HOVER_FILL);showHover(ev,'rackd',d.rackd);})
+      .on('mouseout',function(){d3.select(this).attr('stroke',C.MID_GREY);queueHideHover();})
+      .on('mousemove',moveHover);
+    portSquares(lRackd,'rackd-all',rackdPorts,
+      d=>d.portKind==='uplink'?C.AUBERGINE:(d.swType==='data'?C.DATA_COLOR:C.MGMT_COLOR), null);
+
+    // ── Switch arcs + port squares ────────────────────────────────────────────
+    lSw.selectAll('path.sw-arc').data(allSwArcs, d=>d.data.id).join('path')
+      .attr('class','sw-arc').attr('fill','transparent')
+      .attr('stroke',d=>d.data.type==='data'?C.DATA_COLOR:C.MGMT_COLOR).attr('d',swArcGen)
+      .on('click',(ev,d)=>{ev.stopPropagation();selectEntity(d.data.id,'switch');showDetailPanel(d.data,'switch');})
+      .on('mouseover',function(ev,d){d3.select(this).attr('fill',(d.data.type==='data'?C.DATA_COLOR:C.MGMT_COLOR)+'4d');showHover(ev,'switch',d.data);})
+      .on('mouseout',function(){d3.select(this).attr('fill','transparent');queueHideHover();})
+      .on('mousemove',moveHover);
+    portSquares(lSw,'sw-port',swPorts,
+      d=>d.portType==='uplink'?C.LIGHT_GREY:(d.swType==='data'?C.DATA_COLOR:C.MGMT_COLOR), null);
+
+    // ── Server rects + port columns (always visible — no LOD) ────────────────
+    const srvGs = lSrv.selectAll('g.srv-g').data(srvRects, d=>d.id).join(
+      e=>e.append('g').attr('opacity',0).call(s=>animated?s.transition().duration(DUR).attr('opacity',1):s.attr('opacity',1)),
+      u=>u, x=>animated?x.transition().duration(200).attr('opacity',0).remove():x.remove()
+    ).attr('class','srv-g').attr('transform',d=>`translate(${d.baseX},${d.baseY}) rotate(${180+d.angle*180/Math.PI})`);
+
+    srvGs.selectAll('rect.srv-rect').data(d=>[d]).join('rect').attr('class','srv-rect')
+      .attr('x',-PORT_SZ/2).attr('y',0).attr('width',PORT_SZ).attr('height',d=>d.srvLen)
+      .attr('fill','transparent').attr('stroke',C.LIGHT_GREY).attr('rx',1)
+      .on('click',(ev,d)=>{ev.stopPropagation();selectEntity(d.id,'server');showDetailPanel(d.srv,'server');})
+      .on('mouseover',function(ev,d){d3.select(this).attr('fill','rgba(68,68,68,.25)').attr('stroke',C.COOL_GREY);showHover(ev,'server',d.srv);})
+      .on('mouseout',function(){d3.select(this).attr('fill','transparent').attr('stroke',C.LIGHT_GREY);queueHideHover();})
+      .on('mousemove',moveHover);
+    srvGs.selectAll('g.srv-port-g').data(d=>d.ports).join('g')
+      .attr('class','srv-port-g psq-g').attr('transform',d=>`translate(0,${d.localY+PORT_SZ/2})`)
+      .call(g=>g.selectAll('rect.psq').data(d=>[d]).join('rect').attr('class','psq')
+        .attr('x',-PORT_SZ/2).attr('y',-PORT_SZ/2).attr('width',PORT_SZ).attr('height',PORT_SZ).attr('rx',1)
+        .attr('fill',d=>d.type==='data'?C.DATA_COLOR:C.MGMT_COLOR).attr('stroke','none'))
+      .on('mouseover',(ev,d)=>showHover(ev,'port',d)).on('mousemove',moveHover).on('mouseout',queueHideHover);
+
+    // ── Region port ring ──────────────────────────────────────────────────────
+    lRCPorts.selectAll('g.psq-g.rc-port').data(regPorts, d=>d.portId).join('g')
+      .attr('class','psq-g rc-port')
+      .attr('transform',d=>`translate(${d.x},${d.y}) rotate(${d.angle*180/Math.PI})`)
+      .call(g=>g.selectAll('rect.psq').data(d=>[d]).join('rect').attr('class','psq')
+        .attr('x',-PORT_SZ/2).attr('y',-PORT_SZ/2).attr('width',PORT_SZ).attr('height',PORT_SZ).attr('rx',1)
+        .attr('fill',C.LIGHT_GREY).attr('stroke',C.MID_GREY).attr('stroke-width',.8))
+      .on('mouseover',(ev,d)=>showHover(ev,'port',d)).on('mousemove',moveHover).on('mouseout',queueHideHover);
+
+    // ── Rack labels — radial/spoke style (Amendment 11 §1) ───────────────────
+    lLabels.selectAll('text.rack-lbl').data(rackArcs, d=>d.data.id).join('text')
+      .attr('class','rack-lbl').attr('fill',C.TEXT_PRIMARY)
+      .attr('transform', d => {
+        const mid = (d.startAngle+d.endAngle)/2;
+        const lt  = labelTransform(mid);
+        return `translate(${lt.lx},${lt.ly}) rotate(${lt.rotate})`;
+      })
+      .attr('text-anchor', d => { const mid=(d.startAngle+d.endAngle)/2; return mid>Math.PI?'end':'start'; })
+      .text(d => {
+        const mid = (d.startAngle+d.endAngle)/2;
+        // Suppress if angular gap at R_LABEL too narrow for the label text
+        const arcLen = R_LABEL * (d.endAngle - d.startAngle);
+        return arcLen >= d.data.name.length * 5 + 6 ? d.data.name : '';
+      })
+      .on('click',(ev,d)=>{ev.stopPropagation();selectEntity(d.data.id,'rack');showDetailPanel(d.data,'rack');})
+      .on('mouseover',(ev,d)=>showHover(ev,'rack',d.data))
+      .on('mousemove',moveHover).on('mouseout',queueHideHover);
+
+    applyPathHighlight();
+    applyToggles();
+    applyFilters();
+  }
+
+  // ── Path highlighting ─────────────────────────────────────────────────────────
+  function selectEntity(id,type){if(selectedId===id){clearSelection();return;}selectedId=id;selectedType=type;applyPathHighlight();}
+  function clearSelection(){selectedId=null;selectedType=null;rootG.selectAll('.path-active,.path-dimmed').classed('path-active',false).classed('path-dimmed',false);}
+  function applyPathHighlight(){
+    if(!selectedId||!currentTopology){clearSelection();return;}
+    const{rackControllers,racks}=currentTopology;
+    const aRacks=new Set(), aRackds=new Set();
+    if(selectedType==='region'){rootG.selectAll('[class]').classed('path-active',true).classed('path-dimmed',false);return;}
+    if(selectedType==='rackd'){aRackds.add(selectedId);rackControllers.find(r=>r.id===selectedId)?.racks.forEach(id=>aRacks.add(id));}
+    else if(selectedType==='rack'){aRacks.add(selectedId);const rack=racks.find(r=>r.id===selectedId);if(rack?.rackdId)aRackds.add(rack.rackdId);}
+    else if(selectedType==='switch'){const ri=selectedId.replace(/-sw-.*$/,'');aRacks.add(ri);const rack=racks.find(r=>r.id===ri);if(rack?.rackdId)aRackds.add(rack.rackdId);}
+    else if(selectedType==='server'){const ri=selectedId.replace(/-srv-.*$/,'');aRacks.add(ri);const rack=racks.find(r=>r.id===ri);if(rack?.rackdId)aRackds.add(rack.rackdId);}
+    const byRack =d=>aRacks.has(d.rackId);
+    const byRackd=d=>aRackds.has(d.rackdId)||(d.rackIds&&d.rackIds.some(id=>aRacks.has(id)));
+    lBunA.selectAll('.bun-a-g').classed('path-active',byRackd).classed('path-dimmed',d=>!byRackd(d));
+    lBunB.selectAll('.bun-b-g').classed('path-active',byRackd).classed('path-dimmed',d=>!byRackd(d));
+    lBunC.selectAll('.bun-c-g').classed('path-active',byRack).classed('path-dimmed',d=>!byRack(d));
+    lRackd.selectAll('path.rackd-arc,.psq-g')
+      .classed('path-active',d=>aRackds.has(d.rackdId||d.id)||(d.rackIds&&d.rackIds.some(id=>aRacks.has(id))))
+      .classed('path-dimmed',d=>!(aRackds.has(d.rackdId||d.id)||(d.rackIds&&d.rackIds.some(id=>aRacks.has(id)))));
+    lSw.selectAll('path.sw-arc,.psq-g').classed('path-active',byRack).classed('path-dimmed',d=>!byRack(d));
+    lSrv.selectAll('g.srv-g').classed('path-active',byRack).classed('path-dimmed',d=>!byRack(d));
+    lRCPorts.selectAll('.rc-port').classed('path-active',byRackd).classed('path-dimmed',d=>!byRackd(d));
+    lLabels.selectAll('text.rack-lbl').classed('path-active',d=>aRacks.has(d.data.id)).classed('path-dimmed',d=>!aRacks.has(d.data.id));
+  }
+
+  // ── Filters ───────────────────────────────────────────────────────────────────
+  function applyFilters(){
+    const{redundantOnly,dataOnly,mgmtOnly}=filters;
+    rootG.selectAll('.filter-hidden').classed('filter-hidden',false);
+    if(redundantOnly)lBunA.selectAll('.bun-a-g').classed('filter-hidden',d=>!d.isRedundant);
+    if(dataOnly||mgmtOnly){
+      lSw.selectAll('path.sw-arc').classed('filter-hidden',d=>{if(dataOnly&&d.data.type!=='data')return true;if(mgmtOnly&&d.data.type!=='mgmt')return true;return false;});
+      [lBunB.selectAll('.bun-b-g'),lBunC.selectAll('.bun-c-g')].forEach(sel=>sel.classed('filter-hidden',d=>{if(dataOnly&&d.swType!=='data')return true;if(mgmtOnly&&d.swType!=='mgmt')return true;return false;}));
+    }
+  }
+
+  // ── Layer toggles — simplified, no LOD (Amendment 11 §2) ─────────────────────
+  function applyToggles(){
+    const sRedund=document.getElementById('toggle-redundant').checked;
+    const sRackd =document.getElementById('toggle-rackd').checked;
+    const sData  =document.getElementById('toggle-data').checked;
+    const sMgmt  =document.getElementById('toggle-mgmt').checked;
+    const sSrv   =document.getElementById('toggle-servers').checked;
+    const sPorts =document.getElementById('toggle-ports').checked;
+
+    lRackd.style('display', sRackd ? null : 'none');
+    lBunA.style('display', sRackd&&sPorts ? null : 'none');
+    if(sRackd&&sPorts) lBunA.selectAll('.bun-a-g').style('display',d=>(!sRedund&&d.portIdx>=1)?'none':null);
+    lBunB.style('display', sRackd&&sPorts ? null : 'none');
+    if(sRackd&&sPorts) lBunB.selectAll('.bun-b-g').style('display',d=>{if(d.swType==='data'&&!sData)return'none';if(d.swType==='mgmt'&&!sMgmt)return'none';return null;});
+    lBunC.style('display', sPorts ? null : 'none');
+    if(sPorts) lBunC.selectAll('.bun-c-g').style('display',d=>{if(d.swType==='data'&&!sData)return'none';if(d.swType==='mgmt'&&!sMgmt)return'none';return null;});
+
+    lSw.selectAll('path.sw-arc').style('display',d=>{if(d.data.type==='data'&&!sData)return'none';if(d.data.type==='mgmt'&&!sMgmt)return'none';return null;});
+    lSw.selectAll('g.psq-g').style('display',d=>{if(d.swType==='data'&&!sData)return'none';if(d.swType==='mgmt'&&!sMgmt)return'none';return null;});
+    lRackd.selectAll('g.psq-g').style('display',d=>{
+      if(d.portKind==='downlink'){if(d.swType==='data'&&!sData)return'none';if(d.swType==='mgmt'&&!sMgmt)return'none';}
+      return null;
+    });
+    lSrv.style('display', sSrv ? null : 'none');
+    if(sSrv) lSrv.selectAll('.srv-port-g').style('display',d=>{if(d.type==='data'&&!sData)return'none';if(d.type==='mgmt'&&!sMgmt)return'none';return null;});
+    applyFilters();
+  }
+
+  ['toggle-redundant','toggle-rackd','toggle-data','toggle-mgmt','toggle-servers','toggle-ports']
+    .forEach(id=>document.getElementById(id).addEventListener('change',applyToggles));
+  document.getElementById('f-redundant').addEventListener('change',e=>{filters.redundantOnly=e.target.checked;applyFilters();});
+  document.getElementById('f-data-only').addEventListener('change',e=>{filters.dataOnly=e.target.checked;applyFilters();});
+  document.getElementById('f-mgmt-only').addEventListener('change',e=>{filters.mgmtOnly=e.target.checked;applyFilters();});
+
+  // ── Hover panel ───────────────────────────────────────────────────────────────
+  const hoverEl = document.getElementById('hover-panel');
+  function showHover(ev,type,entity){
+    if(!entity)return;
+    document.getElementById('hp-id').textContent=entity.id||entity.portId||'';
+    document.getElementById('hp-body').innerHTML=hoverContent(type,entity);
+    hoverEl.style.opacity='1';moveHover(ev);
+    if(hovTimeout){clearTimeout(hovTimeout);hovTimeout=null;}
+  }
+  function moveHover(ev){hoverEl.style.left=(ev.clientX+14)+'px';hoverEl.style.top=(ev.clientY-8)+'px';}
+  function queueHideHover(){hovTimeout=setTimeout(()=>{hoverEl.style.opacity='0';hovTimeout=null;},100);}
+  function hoverContent(type,e){
+    const row=(k,v)=>`<div class="hp-row"><span class="hp-key">${k}</span><span>${v}</span></div>`;
+    if(type==='port')return[row('label',e.label||''),row('type',e.type||''),row('→',e.connectedTo||'')].join('');
+    if(type==='switch')return[row('type',`${e.type}[${e.typeIndex}]`),row('uplink',e.uplinkPort?`→${e.uplinkPort.connectedTo}`:''),row('ports',e.downlinkPorts?.length||0)].join('');
+    if(type==='rack')return[row('rackd',e.rackdId||''),row('switches',e.switches?.length||0),row('servers',e.servers?.length||0)].join('');
+    if(type==='rackd')return[row('racks',e.racks?.join(', ')||''),row('uplinks',e.uplinkPorts?.length||0),row('downlinks',e.downlinkPorts?.length||0)].join('');
+    if(type==='server')return row('ports',e.ports?.length||0);
+    if(type==='region')return row('rackds',currentTopology?.rackControllers?.length||0);
+    return '';
+  }
+
+  // ── Detail panel ──────────────────────────────────────────────────────────────
+  const detailEl = document.getElementById('detail-panel');
+  document.getElementById('dp-close').addEventListener('click',e=>{e.stopPropagation();hideDetailPanel();clearSelection();});
+  function showDetailPanel(entity,type){
+    document.getElementById('dp-title').textContent=entity.name||entity.id;
+    const sec=t=>`<div class="dp-sec">${t}</div>`;
+    const row=(k,v)=>`<div class="dp-row"><span class="dp-key">${k}</span><span>${v}</span></div>`;
+    let html=sec('Hardware')+row('ID',entity.id)+row('Type',type);
+    if(type==='switch'){html+=row('SW type',`${entity.type}[${entity.typeIndex}]`);html+=sec('Networking');html+=row('Uplink',entity.uplinkPort?`${entity.uplinkPort.label}→${entity.uplinkPort.connectedTo}`:'');html+=row('Downlinks',entity.downlinkPorts?.length||0);html+=sec('Peers');entity.downlinkPorts?.slice(0,6).forEach(p=>{html+=row(p.label,p.connectedTo);});if(entity.downlinkPorts?.length>6)html+=row('…',`+${entity.downlinkPorts.length-6} more`);}
+    else if(type==='rack'){html+=row('Rackd',entity.rackdId||'')+row('Servers',entity.servers?.length||0);html+=sec('Switches');entity.switches?.forEach(sw=>{html+=row(sw.id,`${sw.type}[${sw.typeIndex}]`);});}
+    else if(type==='rackd'){html+=sec('Racks served');entity.racks?.forEach(r=>{html+=row(r,'');});html+=sec('Uplink ports');entity.uplinkPorts?.forEach(p=>{html+=row(p.label,`→${p.connectedTo}`);});html+=row('Downlinks',entity.downlinkPorts?.length||0);}
+    else if(type==='server'){html+=sec('Ports');entity.ports?.forEach(p=>{html+=row(p.label,`${p.type}→${p.connectedTo}`);});}
+    document.getElementById('dp-content').innerHTML=html;detailEl.style.display='block';
+  }
+  function hideDetailPanel(){detailEl.style.display='none';}
+
+  // ── Search ────────────────────────────────────────────────────────────────────
+  function buildSearchIndex(topology){
+    const e=[];
+    topology.rackControllers.forEach(r=>e.push({id:r.id,name:r.name,type:'rackd',entity:r}));
+    topology.racks.forEach(rack=>{
+      e.push({id:rack.id,name:rack.name,type:'rack',entity:rack});
+      rack.switches.forEach(sw=>e.push({id:sw.id,name:sw.id,type:'switch',entity:sw}));
+      rack.servers.forEach(srv=>{e.push({id:srv.id,name:srv.name,type:'server',entity:srv});srv.ports.forEach(p=>e.push({id:p.id,name:p.label,type:'port',entity:p,conn:p.connectedTo}));});
+    });
+    e.push({id:topology.regionController.id,name:topology.regionController.name,type:'region',entity:topology.regionController});
+    return e;
+  }
+  const searchInput=document.getElementById('search'), dropdown=document.getElementById('search-dropdown');
+  searchInput.addEventListener('input',e=>{
+    const q=e.target.value.trim().toLowerCase();
+    if(!q){dropdown.style.display='none';return;}
+    const matches=searchEntities.filter(en=>en.id.toLowerCase().includes(q)||en.name.toLowerCase().includes(q)||(en.conn&&en.conn.toLowerCase().includes(q))).slice(0,10);
+    if(!matches.length){dropdown.style.display='none';return;}
+    dropdown.innerHTML=matches.map((m,i)=>`<li data-idx="${i}">${m.id}<span class="sr-type">${m.type}</span></li>`).join('');
+    dropdown.style.display='block';
+    dropdown.querySelectorAll('li').forEach((li,i)=>{li.addEventListener('click',()=>{const m=matches[i];searchInput.value=m.id;dropdown.style.display='none';selectEntity(m.id,m.type);animateZoomTo(cx,cy,m.type==='port'?3.5:m.type==='switch'||m.type==='server'?2:1.5);showDetailPanel(m.entity,m.type);});});
+  });
+  document.addEventListener('click',()=>{dropdown.style.display='none';});
+  searchInput.addEventListener('keydown',e=>{if(e.key==='Escape')dropdown.style.display='none';});
+
+  // ── Controls & resize ─────────────────────────────────────────────────────────
+  function update(N, animated=false, resetZoom=true){
+    N = Math.max(4, Math.min(24, N));
+    clearSelection(); hideDetailPanel();
+    if(resetZoom) svg.call(zoomBehavior.transform, d3.zoomIdentity);
+    currentTopology = generateData(N);
+    render(currentTopology, animated);
+  }
+
+  const slider=document.getElementById('rack-slider'), numIn=document.getElementById('rack-count');
+  slider.addEventListener('input', ()=>{ numIn.value=slider.value; update(+slider.value,true,true); });
+  numIn.addEventListener('change', ()=>{ const v=Math.max(4,Math.min(24,+numIn.value)); numIn.value=v; slider.value=v; update(v,true,true); });
+
+  // Resize handler — rerender without resetting zoom (Amendment 11 §3)
+  let resizeTimer;
+  window.addEventListener('resize', ()=>{
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(()=>{ if(currentTopology) render(currentTopology, true); }, 150);
+  });
+
+  update(12, false, true);
+})();
+</script>
+</body>
+</html>
