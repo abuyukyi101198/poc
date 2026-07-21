@@ -1,3 +1,6 @@
 .idea
 
 __pychache__
+
+node_modules
+dist
