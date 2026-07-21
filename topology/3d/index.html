@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Blueprint 3D</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Ubuntu+Mono&display=swap" rel="stylesheet" />
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+
+      body {
+        background: #ffffff;
+        overflow: hidden;
+        font-family: 'Ubuntu Mono', monospace;
+      }
+
+      #canvas-container { width: 100vw; height: 100vh; }
+
+      #annotations {
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        overflow: visible;
+        opacity: 0;
+      }
+
+      .leader-dot  { fill: #1a1a1a; }
+      .leader-line { stroke: #1a1a1a; stroke-width: 0.75; fill: none; }
+      .leader-text {
+        font-family: 'Ubuntu Mono', monospace;
+        font-size: 11px;
+        fill: #1a1a1a;
+        letter-spacing: 0.05em;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="canvas-container"></div>
+
+    <svg id="annotations" xmlns="http://www.w3.org/2000/svg">
+      <g id="leader">
+        <path id="leader-path" class="leader-line" />
+        <circle id="leader-dot" class="leader-dot" r="2" />
+        <text id="leader-text" class="leader-text">cylinder</text>
+      </g>
+    </svg>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
