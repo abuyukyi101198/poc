@@ -1,14 +1,13 @@
 /**
- * render.js — Phase 1 + 2 + 3
+ * render.js — Phase 1 + 2 + 3 + 5
  *
  * Phase 1: static ring geometry — arc segments, guide circles, labels.
- * Phase 2: plain (unbundled) radial links for every parent/child relationship,
- *          with plane colour coding (§6.2, Canonical brand palette).
- * Phase 3: hierarchical edge bundling — applyBundling() replaces Phase 2
- *          plain Bezier paths with bundled paths from bundling.js (§6.4).
+ * Phase 2: plain (unbundled) radial links, plane-colour-coded.
+ * Phase 3: hierarchical edge bundling via bundling.js (§6.4).
+ * Phase 5: Canonical/Ubuntu brand colours — on-palette tint values at full
+ *          opacity, graduated warm grey ring fills, label colour corrections.
  *
- * Phase 4 will add hover/focus and plane toggles (interaction.js).
- * Phase 5 will apply full Canonical/Ubuntu visual styling.
+ * Phase 4 hover/focus and plane toggles are in interaction.js.
  */
 
 import * as d3 from 'd3';
@@ -34,30 +33,31 @@ const RING_NAMES = {
   R6: 'Server',
 };
 
-// ── Phase 2 link colours — Canonical/Ubuntu brand palette (action plan §6.1) ──
-// Resting-state tints (~60% white mix of the base colour).
-// Full-strength base on hover/focus in Phase 4.
-// Phase 5 will lock in the exact published Canonical tint percentages.
+// ── Phase 5 link colours — Canonical/Ubuntu brand palette, on-palette tints ───
 //
-//   Ubuntu Orange base: #E95420  → 60% tint: #F29879
-//   Aubergine base:     #772953  → 60% tint: #AD7F98
-//   Warm grey (containment skeleton, should visually recede)
+// Key change from Phases 2–3: colours are defined as TINT VALUES at full
+// opacity (opacity=1), NOT as arbitrary CSS opacity fades.  Using the official
+// Canonical tint percentages keeps every shade "on-palette" (action plan §6.1).
 //
-// NOTE: action plan §6.1 maps spec §6.2's placeholder "blue/green" language
-// to Orange (data) and Aubergine (mgmt) — these are NOT the spec's colours.
+// Resting state (tinted):
+//   Ubuntu Orange #E95420 at 67% tint  →  R:240 G:141 B:106  →  #F08D6A
+//   Aubergine     #772953 at 67% tint  →  R:164 G:112 B:140  →  #A4708C
+//   Warm grey skeleton — light tint, always subdued
+//
+// Hover/focus state: full-strength base colours (applied by interaction.js §8.3)
+//   #E95420 (Ubuntu Orange full) / #772953 (Aubergine full) / #AEA9A5 (warm grey)
 export const LINK_COLORS = {
-  data:   '#F29879',   // Ubuntu Orange at ~60% tint
-  mgmt:   '#AD7F98',   // Aubergine at ~60% tint
-  shared: '#C8C2BC',   // Warm grey — physical containment skeleton
+  data:   '#F08D6A',   // Ubuntu Orange at 67% tint — resting
+  mgmt:   '#A4708C',   // Aubergine at 67% tint — resting
+  shared: '#D8D1CA',   // Canonical warm grey — physical containment skeleton
 };
 
-// Opacity separates the "structural skeleton" (containment) from the
-// routing-plane links that are the primary information signal.
-// Exported so Phase 4 interaction.js can restore resting opacity after hover.
+// All planes at full opacity — the tint colour carries the visual weight,
+// not a CSS opacity fade (action plan §6.1 "rather than arbitrary opacity").
 export const LINK_OPACITY = {
-  data:   0.65,
-  mgmt:   0.65,
-  shared: 0.25,   // containment links strongly recede (spec §6.2)
+  data:   1,
+  mgmt:   1,
+  shared: 1,
 };
 
 const TWO_PI = 2 * Math.PI;
@@ -132,12 +132,12 @@ export function init(rootSelector = '#topology') {
     .selectAll('text.arc-label')
     .data(layoutNodes)
     .join('text')
-      .attr('class',              'arc-label')
+      .attr('class',              d => `arc-label ring-${d.ring}`)
       .attr('transform',          d => arcLabelTransform(d))
       .attr('text-anchor',        'middle')
       .attr('dominant-baseline',  'central')
       .attr('font-size',          d => arcLabelFontSize(d))
-      .attr('fill',               '#3d3531')
+      .attr('fill',               '#111111')    // Canonical primary text colour
       .attr('pointer-events',     'none')
       .style('user-select',       'none')
       // Hide label if arc is too narrow (§8.4 degradation placeholder)

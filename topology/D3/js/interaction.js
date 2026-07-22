@@ -35,11 +35,30 @@ import { CONFIG } from './layout.js';
 const DIM_OPACITY = 0.07;
 
 /**
- * Resting link opacities — intentional duplicate of LINK_OPACITY in render.js
- * (§6.2 palette).  Kept here rather than imported to avoid coupling
- * interaction.js to render.js; both modules read from the same brand spec.
+ * Resting link opacities — mirrors LINK_OPACITY in render.js (Phase 5: all 1).
+ * Tint colour carries the visual weight; no CSS opacity fade (action plan §6.1).
  */
-const RESTING_LINK_OPACITY = { data: 0.65, mgmt: 0.65, shared: 0.25 };
+const RESTING_LINK_OPACITY = { data: 1, mgmt: 1, shared: 1 };
+
+/**
+ * Resting stroke colours — matches LINK_COLORS in render.js (67% tints).
+ * Kept as a local duplicate to avoid coupling interaction.js to render.js.
+ */
+const RESTING_LINK_STROKE = {
+  data:   '#F08D6A',   // Ubuntu Orange at 67% tint
+  mgmt:   '#A4708C',   // Aubergine at 67% tint
+  shared: '#D8D1CA',   // Canonical warm grey skeleton
+};
+
+/**
+ * Hover/focus stroke colours — full-strength brand colours (action plan §6.1).
+ * Applied to connected links while a node is focused, then restored on blur.
+ */
+const HOVER_LINK_STROKE = {
+  data:   '#E95420',   // Ubuntu Orange full strength
+  mgmt:   '#772953',   // Aubergine full strength
+  shared: '#AEA9A5',   // Canonical warm grey mid
+};
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
@@ -110,11 +129,13 @@ function onFocus(root, hoveredNode, nodeLinksIdx, plainPaths) {
     const key = `${d.source}→${d.target}`;
 
     if (keys.has(key)) {
-      // Connected: swap to plain (de-bundled) path, restore resting opacity,
-      // bring element to front within the links layer.
+      // Connected: swap to plain (de-bundled) path, apply full-strength hover
+      // stroke colour (action plan §6.1 — full-strength on hover/focus),
+      // restore resting opacity, bring element to front within the links layer.
       const plain = plainPaths.get(key);
       if (plain) sel.attr('d', plain);
-      sel.attr('opacity', RESTING_LINK_OPACITY[d.plane] ?? RESTING_LINK_OPACITY.shared)
+      sel.attr('stroke',  HOVER_LINK_STROKE[d.plane]  ?? HOVER_LINK_STROKE.shared)
+         .attr('opacity', RESTING_LINK_OPACITY[d.plane] ?? RESTING_LINK_OPACITY.shared)
          .raise();
     } else {
       sel.attr('opacity', DIM_OPACITY);
@@ -140,7 +161,8 @@ function onBlur(root, bundledPaths) {
 
     const path = bundledPaths.get(`${d.source}→${d.target}`);
     if (path) sel.attr('d', path);
-    sel.attr('opacity', RESTING_LINK_OPACITY[d.plane] ?? RESTING_LINK_OPACITY.shared);
+    sel.attr('stroke',  RESTING_LINK_STROKE[d.plane]  ?? RESTING_LINK_STROKE.shared)
+       .attr('opacity', RESTING_LINK_OPACITY[d.plane] ?? RESTING_LINK_OPACITY.shared);
   });
 }
 

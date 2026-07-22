@@ -46,14 +46,17 @@ const TWO_PI      = 2 * Math.PI;
 const ARC_GUTTER  = 0.007;   // rad — between sibling arcs within a ring
 const GROUP_GUTTER = 0.028;  // rad — between rack-groups in the R6 server ring
 
-// ── Per-ring Phase-1 fill colours (flat, one colour per ring) ─────────────────
-// Full Canonical/Ubuntu palette applied in Phase 5.
+// ── Per-ring arc fill colours — Phase 5 Canonical/Ubuntu brand palette ────────
+// Warm grey tints graduated lighter toward the outer (server) ring, so the
+// arc fills recede behind the link colours (§6.1 action plan).
+// Base: Canonical warm grey #AEA9A5 (R174 G169 B165), mixed with white.
+// All tints are computed as (p × base) + ((1−p) × white), on-palette.
 export const RING_COLORS = {
-  R1: '#d4cdc8',   // Pod     — lightest warm grey
-  R3: '#bdb6b0',   // Spine
-  R4: '#a6a09a',   // Leaf
-  R5: '#908a84',   // Rack    — darkest
-  R6: '#ddd8d3',   // Server  — outermost ring, lightest to keep it airy
+  R1: '#D6CFC9',   // Pod     — ~30% tint (innermost, slightly darker = visual anchor)
+  R3: '#DEDAD4',   // Spine   — ~22%
+  R4: '#E3DDD8',   // Leaf    — ~18%
+  R5: '#E8E2DC',   // Rack    — ~14%
+  R6: '#EDE8E3',   // Server  — ~10% (lightest, outermost — maximises arc surface §3.1)
 };
 
 // ── Rack display order ────────────────────────────────────────────────────────

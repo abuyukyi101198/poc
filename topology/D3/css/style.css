@@ -1,17 +1,12 @@
 /*
- * style.css — Phase 1–4 structural baseline
+ * style.css — Phase 5: Canonical / Ubuntu brand visual treatment
  *
- * Full Canonical / Ubuntu brand treatment is applied in Phase 5.
- * This file establishes the page skeleton, font stack, the minimal
- * arc/label rules needed for Phase 1 geometry validation, and the
- * plane-toggle control strip added in Phase 4.
- *
- * Ubuntu typeface loaded from Google Fonts (CDN).
- * Phase 5 will switch to self-hosted @font-face per action plan §6.2 — the
- * import below is a placeholder that works offline only if the browser has
- * the font cached; self-hosting removes this dependency entirely.
+ * §6.1  Colour palette  — Ubuntu Orange / Aubergine / warm grey, on-palette tints
+ * §6.2  Typography      — Ubuntu typeface via Google Fonts CDN
+ * §6.3  Visual language — flat fills, no gradients, no shadows, generous white space
  */
 
+/* ── Ubuntu font — Google Fonts CDN ──────────────────────────────────────── */
 @import url('https://fonts.googleapis.com/css2?family=Ubuntu:wght@300;400;500;700&family=Ubuntu+Mono:wght@400;700&display=swap');
 
 /* ── Reset & box model ────────────────────────────────────────────────────── */
@@ -24,39 +19,50 @@
 /* ── Page ─────────────────────────────────────────────────────────────────── */
 body {
   font-family: 'Ubuntu', -apple-system, 'Segoe UI', sans-serif;
-  background: #ffffff;
-  color: #000000;
+  background: #ffffff;       /* Canonical: white canvas (action plan §6.1) */
+  color: #111111;            /* Canonical primary text */
   min-height: 100vh;
   display: flex;
   flex-direction: column;
   align-items: center;
 }
 
-/* ── Header ───────────────────────────────────────────────────────────────── */
+/* ── Page header ──────────────────────────────────────────────────────────── */
 .page-header {
-  padding: 36px 24px 12px;
+  padding: 40px 32px 16px;
   text-align: center;
   width: 100%;
 }
 
 .page-header h1 {
   font-size: 22px;
-  font-weight: 300;
+  font-weight: 300;           /* Ubuntu Light — Canonical title treatment */
   letter-spacing: 0.04em;
   color: #111111;
 }
 
+/* Thin Ubuntu Orange accent line below the title — Canonical brand motif */
+.page-header h1::after {
+  content: '';
+  display: block;
+  width: 40px;
+  height: 2px;
+  background: #E95420;        /* Ubuntu Orange full strength */
+  margin: 10px auto 0;
+}
+
 .page-header .subtitle {
   font-size: 12px;
-  color: #767676;
-  margin-top: 6px;
+  font-weight: 400;
+  color: #767676;             /* Canonical secondary text */
+  margin-top: 12px;
   letter-spacing: 0.02em;
 }
 
-/* ── Phase badge (temporary, removed in Phase 5 polish) ──────────────────── */
+/* Phase badge — temporary development marker; removed in Phase 6 polish */
 .phase-badge {
   display: inline-block;
-  margin-top: 10px;
+  margin-top: 12px;
   padding: 2px 10px;
   font-size: 10px;
   font-weight: 500;
@@ -73,29 +79,29 @@ body {
   display: flex;
   justify-content: center;
   align-items: center;
-  padding: 8px 16px 32px;
+  padding: 16px 32px 24px;
 }
 
 #topology {
   display: block;
-  /* SVG width/height set programmatically by render.js */
+  /* SVG dimensions set programmatically by render.js */
 }
 
 /* ── Arc elements ─────────────────────────────────────────────────────────── */
+/* Smooth opacity transition on hover focus/blur (§8.3).                      */
+/* Flat fills — no gradients, no shadows (Suru/Vanilla §6.3).                 */
 .node-arc {
-  /* Smooth opacity transition for hover focus/blur (§8.3) */
   transition: opacity 0.15s ease;
 }
 
 /* ── Link paths ───────────────────────────────────────────────────────────── */
-/* Path data (d attribute) changes are instant — no CSS transition on `d`.    */
-/* Opacity is set programmatically by interaction.js; no default transition   */
-/* here to avoid conflicting with the instant path-swap on de-bundle.         */
+/* Path-data and stroke changes are instant; opacity fades gently.            */
 .link {
   pointer-events: none;
+  transition: opacity 0.10s ease;
 }
 
-/* ── Labels ───────────────────────────────────────────────────────────────── */
+/* ── SVG text elements ────────────────────────────────────────────────────── */
 .arc-label,
 .ring-name,
 .centre-label {
@@ -104,25 +110,35 @@ body {
   user-select: none;
 }
 
-/* ── Phase 4 — Plane toggle controls (§8.2) ──────────────────────────────── */
+/* Rack and server ID labels in Ubuntu Mono — "network engineering console"   */
+/* feel appropriate to the content (action plan §6.2).                        */
+.arc-label.ring-R5,
+.arc-label.ring-R6 {
+  font-family: 'Ubuntu Mono', 'Courier New', monospace;
+}
+
+/* ── Phase 4–5 plane toggle controls (§8.2) ──────────────────────────────── */
+/* Flat pill buttons — Canonical Vanilla visual language (§6.3).              */
+/* border-radius ≤ 2 px, no drop shadows, no skeuomorphic decoration.        */
 .controls {
   display: flex;
   gap: 10px;
   justify-content: center;
   align-items: center;
-  padding: 0 24px 28px;
+  padding: 0 32px 32px;
   flex-wrap: wrap;
 }
 
 .controls-label {
   font-size: 11px;
+  font-weight: 500;
   color: #767676;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
-  margin-right: 2px;
+  margin-right: 4px;
 }
 
-/* Flat pill button — inactive (plane is hidden) */
+/* Inactive: white fill, warm grey border */
 .toggle-btn {
   font-family: 'Ubuntu', -apple-system, 'Segoe UI', sans-serif;
   font-size: 11px;
@@ -135,7 +151,6 @@ body {
   cursor: pointer;
   border-radius: 2px;
   transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
-  /* No box-shadow, no border-radius > 2 px — Vanilla / Suru flat language */
 }
 
 .toggle-btn:hover:not(.active) {
@@ -143,28 +158,29 @@ body {
   color: #3d3531;
 }
 
-/* Active states — plane colours from action plan §6.1 (Canonical brand) */
+/* Active states: tint colours matching the link resting stroke colours       */
+/* (render.js LINK_COLORS — 67% tints on white, action plan §6.1).           */
 .toggle-btn.active[data-plane="data"] {
-  background: #F29879;   /* Ubuntu Orange ~60% tint — matches link colour */
-  border-color: #F29879;
+  background:   #F08D6A;   /* Ubuntu Orange at 67% tint */
+  border-color: #F08D6A;
   color: #ffffff;
 }
 
 .toggle-btn.active[data-plane="mgmt"] {
-  background: #AD7F98;   /* Aubergine ~60% tint */
-  border-color: #AD7F98;
+  background:   #A4708C;   /* Aubergine at 67% tint */
+  border-color: #A4708C;
   color: #ffffff;
 }
 
 .toggle-btn.active[data-plane="shared"] {
-  background: #908a84;   /* Warm grey — containment skeleton */
+  background:   #908a84;   /* Canonical warm grey mid */
   border-color: #908a84;
   color: #ffffff;
 }
 
 /* ── Footer ───────────────────────────────────────────────────────────────── */
 footer {
-  padding: 16px;
+  padding: 16px 32px 24px;
   font-size: 11px;
   color: #aaa;
   text-align: center;
