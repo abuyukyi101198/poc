@@ -9,59 +9,24 @@ prior design discussion.
 
 ---
 
-## 1. Purpose and Design Rationale
+## 1. Purpose
 
-### 1.1 Problem being solved
+This visualization represents datacenter topologies containing multiple overlapping routing and containment hierarchies
+while preserving explicit parent-child connectivity. Nodes occupy fixed concentric rings representing hierarchy depth,
+while relationships are expressed through explicit inter-ring links rather than inferred from geometric nesting. The
+model supports multiple parents per node, redundant routing paths, and multiple coexisting network planes without
+duplicating physical infrastructure.
 
-A datacenter topology, as described in the reference architecture, is not a single tree. It is several coexisting
-hierarchies sharing a common set of physical anchors (rack, server), plus a set of cross-cutting categorizations that do
-not belong in any hierarchy at all. A strict containment diagram (e.g. a classic sunburst) can only faithfully represent
-structures with a single parent per node. The reference architecture violates this in two specific, load-bearing ways:
-
-- **Dual-leaf racks**: a rack can be served by two leaf switches, not one.
-- **ECMP leaf-spine fan-out**: a leaf switch connects to multiple spine switches by design, and the number of active
-  equal-cost paths is itself meaningful information.
-
-A layout that forces single-parent structure would either misrepresent these relationships or hide them behind
-non-structural annotation. This specification instead separates **position** (which ring a node sits in) from *
-*relationship** (which links connect it to nodes in adjacent rings), so that multi-parent structures are drawn as what
-they are, rather than approximated.
-
-### 1.2 Chosen technique
-
-**Radial layered graph with circular dendrogram link paths**, i.e.:
-
-- **Layered / Sugiyama-style layout**: nodes are assigned to discrete layers (here, concentric rings) by hierarchy
-  depth, and edges run only between adjacent layers under normal conditions.
-- **Radial arrangement**: layers are drawn as concentric rings rather than horizontal bands, preserving the
-  large-arc-surface readability and color-coding density that motivated the original sunburst proposal.
-- **Circular dendrogram link geometry**: inter-ring links follow the path style used in D3's circular dendrogram
-  layout — a short radial stub from the source node to a floating arc circle in the inter-ring gap, a circular arc along
-  that midpoint radius to align with the target's angular position, then a short radial drop to the target node. This
-  produces only arc and radial segments (no diagonals), and links from the same source naturally share the entry arc
-  segment, creating visual grouping without explicit deflection. See §6.4.
-
-### 1.3 What this design keeps from the original sunburst proposal, and what it changes
-
-| Property                                                                         | Sunburst (original)                                   | This design                                                                                                   |
-|----------------------------------------------------------------------------------|-------------------------------------------------------|---------------------------------------------------------------------------------------------------------------|
-| Ring = hierarchy depth                                                           | Yes                                                   | Yes, unchanged                                                                                                |
-| Arc angular span = readable surface area                                         | Yes                                                   | Yes, unchanged                                                                                                |
-| Color coding on arcs                                                             | Yes                                                   | Yes, unchanged                                                                                                |
-| Parent-child shown by angular nesting                                            | Yes                                                   | **No** — angular position is independent per ring                                                             |
-| Parent-child shown by drawn link                                                 | No (implicit in geometry)                             | **Yes** — explicit curve, can be one-to-many or many-to-many                                                  |
-| Multiple parents per node                                                        | Not representable                                     | Representable natively                                                                                        |
-| Full mesh (ECMP)                                                                 | Not representable                                     | Representable, with natural arc overlap controlling visual density                                            |
-| Two parallel hierarchies sharing one physical layer (data vs. management fabric) | Not representable without duplicating the whole chart | Representable as two independently colored, independently toggleable link sets over the shared physical rings |
+The visualization is implementation-agnostic and specifies only the visual model, interaction model, and underlying data
+schema.
 
 ---
 
 ## 2. Scope of Hierarchies Represented
 
-Per prior analysis, the datacenter topology contains eight coexisting structures. This specification's ring/link model
-covers the first three, which are genuine (near-)hierarchies. The remaining five are categorizations, not hierarchies,
-and are explicitly out of scope for ring/link geometry — they are represented through node/link attributes (color,
-pattern, stroke) instead. See §7.
+The datacenter topology contains eight coexisting structures. This specification's ring/link model covers the first
+three, which are genuine (near-)hierarchies. The remaining five are categorizations represented through node/link
+attributes (color, pattern, stroke) instead. See §7.
 
 **In scope for ring + link geometry:**
 
@@ -81,10 +46,7 @@ pattern, stroke) instead. See §7.
 
 ## 3. Ring Model
 
-### 3.1 Ring set (generic, option-agnostic)
-
-Rings are defined generically so that Options A–D are the *same* visualization with rings populated, collapsed, or
-omitted — not four different charts.
+### 3.1 Ring Set
 
 | Ring (inner → outer) | Generic label                | Populated in                                             |
 |----------------------|------------------------------|----------------------------------------------------------|
@@ -96,25 +58,16 @@ omitted — not four different charts.
 | R5                   | Rack                         | A, B, C, D                                               |
 | R6                   | Server                       | A, B, C, D (always populated — universal outermost ring) |
 
-Rings are drawn **innermost = region, outermost = server**, so that the ring holding the most individually-meaningful
-arcs — every server in every rack — gets the largest available radius and arc-length budget, maximizing per-server
-readability and color-coding surface area. This is the opposite radial direction from a standard containment sunburst (
-which typically grows outward from root to leaf in size-of-aggregate terms); here it is deliberately inverted because
-the design goal is per-server legibility at the perimeter, not root prominence at the center. It also matches the
-direction option scale increases outward from the core: A populates only R5–R6 near the middle-to-outer bands, D uses
-the full R0–R6 stack from center to edge.
+Rings are generic so that every deployment option (A–D) is represented by the same visualization model. Empty rings are
+omitted, allowing adjacent populated rings to remain contiguous.
 
-### 3.2 Ring independence
+### 3.2 Ring Independence
 
-Each ring is laid out independently:
+Each populated ring is laid out independently.
 
-- Arc order and spacing within a ring are determined by that ring's own layout pass (see §5), not inherited from ring
-  position of parents or children.
-- A ring may be entirely empty for a given option/site instance, in which case it is omitted and adjacent populated
-  rings become radially adjacent (no dead radius band).
-- Two nodes in the same ring never have a drawn relationship to each other — same-ring edges are not part of this
-  model (e.g. leaf-to-leaf peer links, if they exist operationally, are out of scope here; only inter-ring parent/child
-  relationships are drawn).
+- Node ordering is determined only by that ring's layout pass.
+- Empty rings are omitted.
+- Only inter-ring parent/child links are rendered.
 
 ### 3.3 Per-option ring population (collapse rules)
 
@@ -124,9 +77,6 @@ Each ring is laid out independently:
 | **B** (small resilient) | R1 (Pod, may be a single pod), R3 (ToR pair, labeled "Tier-2 / ToR"), R5, R6                               | R4 (Leaf) is **not separately populated** — ToR occupies the R3 slot directly, since B has no distinct leaf/spine split. R2 is omitted.                         |
 | **C** (leaf-spine pod)  | R1, R2 (only if super-spine present within a large pod — otherwise omitted), R3 (Spine), R4 (Leaf), R5, R6 | Full generic stack minus Region.                                                                                                                                |
 | **D** (multi-pod)       | R0, R1, R2, R3, R4, R5, R6                                                                                 | Full generic stack.                                                                                                                                             |
-
-This collapse rule is what lets a single spec (and a single implementation) render all four options without branching
-logic beyond "which rings have nodes."
 
 ---
 
@@ -161,15 +111,11 @@ Every node, regardless of ring, carries:
 }
 ```
 
-### 4.3 The `plane` attribute and dual-tree rings
+### 4.3 The `plane` attribute
 
-R2, R3, R4 nodes must declare `plane: "data"` or `plane: "mgmt"`, because the data fabric and management fabric are
-structurally separate Clos fabrics that happen to terminate on the same rack/server rings. This means **R2–R4 rings can
-contain two disjoint sets of arcs** (a data-plane set and a management-plane set), visually distinguished by color
-family (§6.2) and independently toggleable (§8.2).
-
-R5 (Rack) and R6 (Server) are `plane: "shared"` — a single physical rack/server arc receives links from both plane's
-link sets.
+Rings R2–R4 contain independent data-plane and management-plane nodes. R5 and R6 are shared physical infrastructure and
+may receive links from both planes simultaneously. Plane membership is represented by the `plane` attribute and controls
+coloring, filtering, and link generation throughout the visualization.
 
 ---
 
@@ -177,12 +123,8 @@ link sets.
 
 ### 5.1 Radial layer assignment
 
-Standard Sugiyama layering, applied radially:
-
-1. Assign each node a layer = its ring, per §3.
-2. Where a node's true hierarchy depth doesn't align with a populated ring (e.g. Option B's ToR occupying the "Tier-2"
-   slot), remap per the collapse table in §3.3. This remapping is a **static per-option lookup**, not a dynamic layout
-   decision.
+Each node is assigned to its configured ring according to §3.3. Ring assignment is static and independent of layout
+optimization.
 
 ### 5.2 Angular position and arc width within a ring
 
@@ -193,25 +135,18 @@ For each ring, independently:
    raw device count) are configurable per §9.2.
 2. Order nodes within the ring to **minimize link crossings** to the adjacent (parent) ring — this is the radial
    analogue of the classic Sugiyama crossing-minimization step (barycenter or median heuristic, applied per ring pass,
-   working inward from the outermost populated ring, R6/Server, toward R0/Region, then refined in a second pass back
-   outward toward R6).
+   working inward from the outermost populated ring toward R0, then refined in a second outward pass).
 3. Assign angular span proportional to weight, with a fixed minimum arc width so that low-weight nodes remain
    clickable/hoverable.
 4. Leave a small fixed angular gutter between sibling arcs and a larger gutter between groups that share a common
-   parent, to visually pre-group children before links are even drawn (reduces reliance on the links alone for grouping
-   legibility).
-5. **Rack↔leaf alignment (resolved, see §10 item 2):** at R4, data-leaf and management-leaf arcs are angularly
-   positioned to align with the R5 rack arc(s) they serve, rather than clustering all leaves of one plane into a single
-   angular block. This keeps rack-to-leaf links short and close to radial, minimizing lateral curvature and crossing at
-   the ring pair most viewers will inspect closely (rack-level detail). Alignment is computed via the circular mean (
-   atan2 of weighted unit-vector sum) of the rack angles served by each leaf, to correctly handle leaves that serve
-   racks near the 0/2π seam.
+   parent, to visually pre-group children before links are drawn.
+5. R4 leaf nodes are positioned using the circular mean of the rack angles they serve, minimizing rack-to-leaf curvature
+   while correctly handling the 0/2π seam.
 
 ### 5.3 Radii
 
-Ring radii are fixed proportions of total chart radius, populated rings only (empty rings contribute no radius, per
-§3.2). Minimum ring band thickness is set to accommodate label text at the smallest supported chart size; if a ring
-cannot fit labels at current zoom, labels degrade to hover-only (see §8.4) rather than shrinking arc geometry.
+Ring radii are fixed proportions of the available chart radius. Omitted rings consume no radial space. Labels degrade to
+hover-only when the available arc length falls below the configured threshold (§8.4).
 
 ---
 
@@ -219,21 +154,15 @@ cannot fit labels at current zoom, labels degrade to hover-only (see §8.4) rath
 
 ### 6.1 What a link represents
 
-A link is drawn between a node in ring N and a node in ring N+1 (or N−1) wherever a real parent/child (containment or
-routing-adjacency) relationship exists in the source data. Links are **not** drawn:
+Links are drawn only between nodes in adjacent rings. The following are never drawn:
 
-- Between nodes in the same ring.
-- Between non-adjacent rings (a server never links directly to a spine; it always routes through the intermediate ring's
-  node, even at Option A/B where that ring is collapsed — the collapse itself resolves this, see §3.3).
-- **Pod→rack containment skip links (R1→R5)** are explicitly excluded. Although the data model may carry these
-  relationships (a pod physically contains its racks), drawing a direct R1→R5 link crossing over R3 and R4 is visually
-  redundant — the routing path pod→spine→leaf→rack already expresses containment through the hierarchy. Rendering the
-  skip link as an additional line adds visual noise and creates diagonal artifacts that cross unrelated ring sectors.
-- Where the reference architecture explicitly forbids the underlying adjacency (see §7.6 — these are rendered, if at
-  all, as a distinct "forbidden" glyph, not a normal link).
+- Same-ring links.
+- Skip links between non-adjacent rings — the routing path through intermediate rings already expresses the
+  relationship (e.g. pod→spine→leaf→rack renders pod→rack containment implicitly).
+- Forbidden adjacencies — rendered separately as a distinct glyph when needed (see §7.6), not as a normal link.
 
-Rack→server containment links (R5→R6) **are** drawn — they are adjacent-ring links that carry meaningful structural
-information (which physical servers belong to which rack) not otherwise visible.
+Rack→server containment links (R5→R6) are the only physical containment links rendered; all other containment is
+expressed through the routing hierarchy.
 
 ### 6.2 Link color (plane encoding)
 
@@ -257,90 +186,56 @@ stroke is available as an alternate mode (§9.2) for network-engineering-focused
 
 ### 6.4 Link path geometry
 
-Links use the **circular dendrogram** path shape, consisting of three segments:
+Links follow a circular dendrogram path consisting of:
 
-```
-M  source node outer edge          (inner-ring outer radius, source arc midpoint angle)
-L  arc-circle entry point          (inter-ring gap midpoint radius, same angle — purely radial stub)
-A  circular arc at gap midpoint    (sweeps from source angle to target arc midpoint angle)
-L  target node inner edge          (outer-ring inner radius, target angle — purely radial drop)
-```
+- Radial segment from source node to the inter-ring gap midpoint (arc entry point).
+- Circular arc at the inter-ring gap midpoint, sweeping from source angle to target angle.
+- Radial segment from the arc exit point into the target node.
 
-Key properties of this geometry:
+All link segments are therefore radial or circular. Explicit edge bundling or angular deflection is not part of this
+specification.
 
-- Every segment is either a circular arc or a radial straight line. **No diagonal segments exist** — any angular
-  deflection of the arc entry or exit points away from the natural source/target angles creates Cartesian diagonal
-  artifacts that read as rendering errors.
-- The floating arc at the inter-ring gap midpoint radius gives links visual separation from both ring borders.
-- Links originating from the same source node naturally share the arc entry point on the gap circle, and links to
-  angularly nearby targets share overlapping arc segments — this is the circular dendrogram visual grouping effect that
-  arises from the topology structure itself, without explicit deflection.
-- The R1 pod node spans the full circle (0→2π). Pod-originating links use the target's angle as their source angle,
-  causing the radial stub and arc to degenerate to two collinear segments — each such link appears as a straight radial
-  line at the target's angular position, visually anchoring it to the pod ring without crossing other sectors.
+### 6.5 Multi-parent rendering
 
-**Note on explicit bundling deflection:** Holten-style angular deflection of link entry or exit angles — regardless of
-whether applied at the source or target end — produces visible diagonal line segments in the inter-ring gaps that read
-as rendering artifacts. The circular dendrogram geometry is the resolved approach: all link segments are either radial
-or circular, and visual grouping arises from the natural overlap of arcs from co-located source nodes. No bundling
-parameter is exposed or needed.
-
-### 6.5 Multi-parent rendering (dual-leaf racks, ECMP)
-
-No special-case geometry is required beyond the base model: a rack node with two leaf parents simply has two incoming
-links from R4 — one from each leaf. Each leaf-to-rack link follows its own circular dendrogram path (radial stub from
-the leaf's arc, arc at the R4/R5 gap circle to the rack's angle, radial drop to the rack). The two paths arrive at the
-same rack arc from different angular positions, making the dual-parent relationship immediately visually apparent.
+Multi-parent relationships require no special rendering. Each parent-child relationship is rendered independently using
+the geometry defined in §6.4.
 
 ---
 
 ## 7. Categorization Layer (Out-of-Ring-Geometry Structures)
 
-These five structures (§2, items 4–8) are represented as **attributes on existing nodes/links**, not as new rings or
-independent link sets, per the decision to keep them for a later phase. This section specifies placeholder encoding so
-the schema doesn't need to be revisited when they're built out.
+Structures 4–8 from §2 are represented as **attributes on existing nodes/links**, not as new rings or independent link
+sets. This section specifies their encoding.
 
 ### 7.1 OOB / break-glass hierarchy
 
-Rendered as a sparse, independent link set (own color, §6.2) touching only console-port-bearing nodes. Because it is
-deliberately minimal-shared-infrastructure, it should visually read as barely present against the data/mgmt density —
-this is intentional and should not be "fixed" by increasing its visual weight.
+Rendered as a sparse, independent link set (own color, §6.2) touching only console-port-bearing nodes. Should visually
+read as barely present against the data/mgmt density — this is intentional.
 
 ### 7.2 Trust / administrative domain
 
 Rendered as arc **fill pattern or border style** on R5/R6 nodes (e.g. solid border = operator-controlled, dashed
-border = tenant-controlled bare-metal, hatched fill = workload endpoint). Never rendered as a link, since the doc frames
-this hierarchy's effect as primarily *negative* (who may not connect) — see §7.6.
+border = tenant-controlled bare-metal, hatched fill = workload endpoint). Never rendered as a link — see §7.6.
 
 ### 7.3 Failure-domain hierarchy
 
 Rendered as a node-level severity indicator (e.g. a small badge or outer-ring tick) on R5 distinguishing
-single-leaf-rack (failure domain = rack) from dual-leaf-rack (failure domain = leaf), so the viewer can read blast
-radius without a separate ring.
+single-leaf-rack (failure domain = rack) from dual-leaf-rack (failure domain = leaf).
 
 ### 7.4 BGP / routing-policy aggregation domain
 
 Rendered as a subtle background wedge or radial guide line at rack/pod boundaries where prefix aggregation occurs,
-toggleable, off by default (low priority relative to the primary data/mgmt story).
+toggleable, off by default.
 
 ### 7.5 Border leaf / external connectivity
 
 Rendered as a **satellite glyph** breaking radially inward from the pod arc at R1, past the inner edge of R0/Region (or
-past the chart center, if R0 is not populated for the current option) — i.e. breaking through the core of the diagram
-rather than through the tier/rack/server stack it sits alongside. This keeps the glyph representing "exits the fabric
-toward WAN/DCI/internet" visually distinct from the tiered rings, consistent with its lateral, non-tiered role
-identified earlier, and avoids routing it through several unrelated rings to reach an edge. DPUs, similarly, render as a
-small badge on the server arc rather than a separate arc.
-
-> **Implementation status:** The border-leaf satellite glyph is not rendered in the current demo. The border-leaf-1 node
-> is present in the data fixture but has `ring: "SAT"` and is silently excluded from ring layout and link drawing — its
-> stub link to pod-1 is similarly excluded. The glyph rendering is deferred per the original action plan.
+past the chart center if R0 is not populated). DPUs render as a small badge on the server arc rather than a separate
+arc.
 
 ### 7.6 Forbidden adjacencies
 
-Where useful for teaching/documentation views, a forbidden adjacency (e.g. workload endpoint attempting fabric peering)
-can be rendered as a distinct dashed/red "null link" glyph on hover or in an explicit "show constraints" mode — off by
-default, since constantly rendering absence adds clutter without aiding the primary reading.
+Rendered as a distinct dashed/red "null link" glyph on hover or in an explicit "show constraints" mode — off by default.
 
 ---
 
@@ -349,32 +244,25 @@ default, since constantly rendering absence adds clutter without aiding the prim
 ### 8.1 Option / scale selection
 
 A primary control (slider or discrete selector, A–D) switches the active per-option ring population and collapse rules (
-§3.3). Transition between options should animate ring insertion/removal and arc re-proportioning rather than
-hard-cutting, so the viewer retains context of what changed.
+§3.3). Transitions should animate ring insertion/removal and arc re-proportioning rather than hard-cutting.
 
 ### 8.2 Plane toggle
 
 Independent show/hide toggles for **Data**, **Management**, and **Containment** (rack→server physical skeleton) link
 sets, each toggleable without affecting ring/node geometry — only link visibility changes. Default state: all three on.
-OOB is not rendered in the current demo and has no toggle; a fourth toggle for OOB should be added (default off) when
-OOB links are implemented.
+A fourth toggle for OOB should be added (default off) when OOB links are implemented.
 
 ### 8.3 Hover / focus behavior
 
-Hovering a node arc illuminates that node's **full parental lineage** — the complete ancestor chain from the hovered
-node up to the pod root — and dims everything else.
-
-**Lineage definition:** the hovered node plus every ancestor reachable by traversing links toward nodes with a lower
-ring depth (using the depth order R1=0 → R3=1 → R4=2 → R5=3 → R6=4). Traversal is BFS upward through the index and stops
-at R1 (the pod has no parents in the current model). Because the topology is not a strict single-parent tree (dual-leaf
-racks have two leaf parents, and the full ECMP mesh means each leaf connects to all spines), the lineage is a subgraph
-rather than a single path — all ancestors reachable through any branch are included.
+Hovering a node highlights its complete ancestor lineage by traversing all incoming links toward lower ring depths.
+Because the topology permits multiple parents, the highlighted lineage is generally a connected subgraph rather than a
+single path.
 
 **What is highlighted:**
 
 - Every ancestor node arc (full opacity).
-- Every drawn link whose both endpoints are within the lineage node set (highlighted at full-strength brand stroke
-  color, `stroke-width` 1.5 px, raised to front of the SVG link layer).
+- Every drawn link whose both endpoints are within the lineage node set (full-strength brand stroke color,
+  `stroke-width` 1.5 px, raised to front of the SVG link layer).
 
 **What is dimmed:**
 
@@ -382,32 +270,25 @@ rather than a single path — all ancestors reachable through any branch are inc
 - All links not in the lineage link set (opacity 0.07, `stroke-width` 1 px).
 
 **Example — hovering a rack (R5):** the rack's leaf parents (R4), all spines connected to those leaves (R3), and the
-pod (R1) are illuminated, along with every leaf→rack, spine→leaf, and pod→spine link that connects them. Servers under
-the rack and other racks' subtrees are dimmed.
-
-**Example — hovering a server (R6):** the server's rack, all leaves serving that rack, all spines serving those leaves,
-and the pod are illuminated — the entire path from the outermost ring to the root.
+pod (R1) are illuminated, along with every leaf→rack, spine→leaf, and pod→spine link that connects them. Servers and
+other racks are dimmed.
 
 On mouse leave, all arcs and links return to their resting state (tint colors, uniform `stroke-width` 1 px).
 
 ### 8.4 Label degradation
 
-At small arc widths (per §5.3), labels move from always-on to hover/click-triggered tooltip, so the ring geometry stays
-legible at Option D scale without text collision.
-
-> **Implementation status:** Label degradation is not implemented in the current demo. At Option C scale, the narrowest
-> arcs (individual server arcs at R6) are approximately 63 px arc-length at mid-ring radius — wide enough to hold a short
-> monospace label without collision. Implement when extending to larger options or denser fixtures.
+At small arc widths, labels move from always-on to hover/click-triggered tooltip, so the ring geometry stays legible at
+Option D scale without text collision.
 
 ### 8.5 Drill / filter
 
 Clicking a pod or rack arc can optionally filter the visualization to that subtree (all rings recompute weights/angles
 relative to the selected node's descendants only) — useful for inspecting a single rack's dual-plane, dual-leaf
-structure in isolation at Option C/D scale, where the full-pod view is necessarily dense.
+structure in isolation at Option C/D scale.
 
 ---
 
-## 9. Data Schema Summary
+## 9. Data Schema
 
 ### 9.1 Minimal graph schema
 
@@ -444,10 +325,10 @@ structure in isolation at Option C/D scale, where the full-pod view is necessari
 }
 ```
 
-Note the two links into `rack-14` from `leaf-data-14a` and `leaf-data-14b` — this is the dual-leaf case rendered
-natively, with no schema-level special case required.
+The two links into `rack-14` demonstrate the dual-leaf case rendered natively, with no schema-level special case
+required.
 
-### 9.2 Configuration parameters (implementation-facing, not per-instance data)
+### 9.2 Configuration parameters
 
 | Parameter                      | Default                     | Purpose                            |
 |--------------------------------|-----------------------------|------------------------------------|
@@ -458,51 +339,31 @@ natively, with no schema-level special case required.
 
 ---
 
-## 10. Open Questions — Status
+## 10. Future Work
 
-1. **Crossing-minimization convergence** across five to seven simultaneously-optimized rings. **Deferred.** Not required
-   for the first demo; a simpler single-pass barycenter heuristic (§5.2) is acceptable as a placeholder. Revisit once a
-   working prototype exposes whether local-optimum crossings are actually visually disruptive in practice, rather than
-   optimizing pre-emptively.
+1. **Crossing-minimization refinement.** The current layout uses a single-pass barycenter heuristic (§5.2). Full
+   multi-pass convergence across simultaneously-optimized rings is deferred until a working deployment demonstrates
+   whether the simpler heuristic produces visually disruptive crossings in practice.
 
-2. **Weight mode interaction with dual-plane overlay** (data-plane vs. management-plane leaf arcs at R4). **Resolved:
-   interleave by rack alignment.** Data-leaf and management-leaf arcs are positioned so each aligns angularly with the
-   rack(s) it serves at R5, rather than being grouped as two separate angular blocks. This shortens and simplifies the
-   rack↔leaf link geometry (near-radial, minimal lateral curvature) at the cost of not clustering all-data-leaves
-   together as a single visual block — an acceptable tradeoff since link legibility to the adjacent ring matters more
-   here than intra-ring grouping by plane. Alignment uses the circular mean (atan2-based weighted unit-vector average)
-   to correctly handle leaves whose served racks span the 0/2π seam.
+2. **Border-leaf visualization at large pod counts (Option D).** The satellite glyph approach (§7.5) may collide at high
+   pod density. A candidate direction is depth-stacking each pod as its own radial disc along a z-axis, with Region (R0)
+   as a shared axis. Navigation model, occlusion, and cross-disc link routing remain open.
 
-3. **Border leaf satellite glyph collision at high pod count** (Option D). **Tentative direction: extend to a third
-   dimension.** Rather than stacking colliding satellite glyphs in 2D, the radial topology itself would be
-   depth-stacked — each pod's full ring stack (R2–R6, or whichever subset is populated) rendered as its own radial "
-   disc," with multiple pod-discs arranged along a z-axis. Region (R0) would then plausibly act as a shared spine/axis
-   running through all pod-discs rather than being duplicated per disc. This resolves the R1/Pod-ring crowding problem
-   structurally rather than through glyph-collision avoidance, but introduces new open questions of its own (
-   navigation/rotation model, occlusion between discs, whether links should be allowed to run *between* discs for
-   cross-pod connections). **Status: exploratory, not specified further until after the 2D demo.**
-
-4. **Whether Option A's single-switch case is worth a ring-based rendering at all**, versus a simplified fallback view.
-   **Still open**, no direction chosen yet. Candidate approaches to evaluate later: (a) render it through the same ring
-   model with R1–R4 simply empty, accepting a mostly-empty center; (b) a distinct simplified non-radial fallback card
-   for Option A only. Deferred until the other three options are validated in the prototype, since Option A's
-   near-triviality makes it low-risk to leave unresolved.
-
-**Demo sequencing implication:** items 1 and 4 require no further design work before building the first prototype. Item
-2 is resolved and implemented. Item 3 is explicitly out of scope for the first (2D) demo and should not block it.
+3. **Whether Option A merits a simplified presentation.** With R1–R4 empty, the ring model produces a mostly-empty
+   center. A non-radial fallback card for Option A may be more appropriate, but this is low-risk to defer until the
+   other options are validated.
 
 ---
 
 ## 11. Visual Design Reference
 
-This section records the specific visual decisions implemented in the Option C demo, for consistency when extending to
-additional options or integrating into a product UI.
+Visual decisions from the Option C implementation, for consistency when extending to additional options or integrating
+into a product UI.
 
 ### 11.1 Typography
 
 - **Primary typeface:** Ubuntu (weights 300, 400, 500, 700) for all UI text — titles, ring labels, legend, tooltips.
-- **Monospace:** Ubuntu Mono (400, 700) for R5 rack and R6 server arc labels, reinforcing the "network engineering
-  console" association.
+- **Monospace:** Ubuntu Mono (400, 700) for R5 rack and R6 server arc labels.
 - **Delivery:** Google Fonts CDN (`@import` at the top of the CSS, family: `Ubuntu` + `Ubuntu Mono`). Fallback stack:
   `"Ubuntu", system-ui, sans-serif`.
 
@@ -526,4 +387,12 @@ Inter-ring gaps (18–20 px each) are left clear — link arcs float at each gap
   Spine → Leaf → Rack → Server. Static, not interactive.
 - **Chart title:** "Datacenter Network Topology", with an Ubuntu-Orange underline accent. Subtitle: "Option C · Standard
   Leaf-Spine Pod · Radial Layered Graph".
+
+### 11.4 Implementation status notes
+
+- **Border-leaf satellite glyph (§7.5):** not rendered. The border-leaf node carries `ring: "SAT"` and is excluded from
+  layout and link drawing. Deferred.
+- **Label degradation (§8.4):** not implemented at Option C scale. Server arcs at R6 are approximately 63 px arc-length
+  at mid-ring radius — sufficient for a short monospace label. Implement when extending to larger options or denser
+  fixtures.
 
