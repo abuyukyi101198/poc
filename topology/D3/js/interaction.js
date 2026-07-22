@@ -58,9 +58,9 @@ export function initInteraction(root, layoutNodes, links) {
 
   root.selectAll('.node-arc')
     .style('cursor', 'pointer')
-    .on('mouseenter', (event, d) =>
+    .on('mouseenter.lineage', (event, d) =>
       onFocus(root, d, nodeLinksIdx, nodeById))
-    .on('mouseleave', () => onBlur(root));
+    .on('mouseleave.lineage', () => onBlur(root));
 
   wireToggles(root, visible);
 

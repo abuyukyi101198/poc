@@ -24,8 +24,8 @@ schema.
 
 ## 2. Scope of Hierarchies Represented
 
-The datacenter topology contains nine coexisting structures. This specification's ring/link model covers the first
-three, which are genuine (near-)hierarchies. The remaining six are categorizations represented through node/link
+The datacenter topology contains eleven coexisting structures. This specification's ring/link model covers the first
+three, which are genuine (near-)hierarchies. The remaining eight are categorizations represented through node/link
 attributes (color, pattern, stroke) instead. See §7.
 
 **In scope for ring + link geometry:**
@@ -46,6 +46,13 @@ attributes (color, pattern, stroke) instead. See §7.
 9. Same-tier peer adjacency (e.g. a ToR-to-ToR link in Option B) — the nodes
    are ordinary ring members; the peer link itself is an attributed exception
    to normal ring linking, see §6.1a.
+10. **MAAS control-plane / provisioning hierarchy** (region controller → rack controller(s) → enlisted machine/BMC).
+    This does **not** collapse onto physical containment (item 1) — a `rackd` rack controller does not have to map
+    1:1 to a physical rack (Option A/B may run one controller for a whole site; Option C/D racks are typically served
+    by ≥2 redundant rack controllers). See §7.7.
+11. **Availability Zone (AZ) / multitenancy boundary** — targets **R5 Rack and R6 Server only** (a whole rack's
+    tenancy assignment, with an optional per-server override for mixed-tenancy racks). Deliberately does **not**
+    touch R1 Pod, keeping the rendering a direct rack-arc wedge fill rather than a sub-arc partition problem. See §7.8.
 
 ---
 
@@ -97,8 +104,8 @@ Each populated ring is laid out independently.
 | R2 Tier-1 | A super-spine / core switch                                | One arc per physical device                                                             |
 | R3 Tier-2 | A spine switch, or a ToR switch in Option B                | One arc per physical device; ToR pairs in Option B may carry a same-ring peer link (§6.1a) |
 | R4 Tier-3 | A leaf switch — data, management, or border (external/WAN/DCI role), see §4.3 | One arc per physical device                                                             |
-| R5 Rack   | A rack (logical + physical unit; MAAS rackd-managed group) | One arc per rack                                                                        |
-| R6 Server | A server, including GPU/accelerator nodes                  | One arc per physical server; DPUs are a server attribute, not a separate arc            |
+| R5 Rack   | A rack (logical + physical unit). Note: this is a *physical* containment unit — it is a distinct concept from the MAAS control-plane's rack-controller grouping, which does not always map 1:1 (§7.7). Its arc fill is overridden by `availability_zone` when set (§7.8) | One arc per rack                                                                        |
+| R6 Server | A server, including GPU/accelerator nodes                  | One arc per physical server; DPUs are a server attribute, not a separate arc; carries an AZ override stroke only when its own `availability_zone` differs from its parent rack's (§7.8) |
 
 ### 4.2 Node attributes (common schema)
 
@@ -114,6 +121,8 @@ Every node, regardless of ring, carries:
   leaf_role: "access" | "border" | "n/a",                  // R4 only, §4.3/§7.5; "n/a" for all other rings
   trust_tier: "operator" | "tenant" | "workload" | "n/a",  // §7.2 — this is the single source of truth for the enum
   failure_domain_role: "spof" | "redundant" | "n/a",       // §7.3 — this is the single source of truth for the enum
+  rack_controller_ids: string[],                           // R1/R5 only, §7.7; [] for all other rings
+  availability_zone: string | "n/a",                       // R5/R6 only, §7.8; "n/a" for all other rings
   metadata: { ... }         // free-form, for tooltips/detail panel
 }
 ```
@@ -268,9 +277,9 @@ another.
 
 ## 7. Categorization Layer (Out-of-Ring-Geometry Structures)
 
-Structures 4, 5, 6, 7 and 9 from §2 are represented as **attributes on existing nodes/links**, not as new rings or
-independent link sets (structure 9's peer link is the one attributed exception that *is* a link, specified in §6.1a).
-This section specifies their encoding.
+Structures 4 through 11 from §2 (excluding structure 9's peer link, which is the one attributed exception that *is* a
+link, specified in §6.1a) are represented as **attributes on existing nodes**, not as new rings or independent link
+sets. This section specifies their encoding.
 
 ### 7.1 OOB / break-glass hierarchy
 
@@ -311,6 +320,43 @@ DPUs continue to render as a small badge on the server arc rather than a separat
 ### 7.6 Forbidden adjacencies
 
 Rendered as a distinct dashed/red "null link" glyph on hover or in an explicit "show constraints" mode — off by default.
+
+### 7.7 MAAS control-plane / provisioning hierarchy
+
+Represented via `rack_controller_ids` (§4.2) on R1 Pod and R5 Rack nodes — a list because a rack is typically served
+by **two or more redundant rack controllers** in Options C/D, while in Options A/B a single controller may cover an
+entire site (populated at R1 instead of per-rack). This is deliberately **not** folded into the R5 Rack node's
+identity or the physical containment tree (§2 item 1) precisely because the mapping isn't 1:1 — a rack controller
+grouping is a control-plane concept, a rack is a physical one, and conflating them was an error in earlier fixture
+comments this spec revision corrects. Rendered **exclusively via the tooltip's dedicated MAAS Control Plane
+section** (§8.6) listing the controller IDs — no arc-level badge, glyph, or other on-canvas indicator is drawn; the
+rack/pod arc itself carries no visual sign of controller assignment until hovered. Never rendered as a link, and
+never affects ring geometry.
+
+### 7.8 Availability Zone (AZ) / multitenancy boundary
+
+Represented via `availability_zone` (§4.2) on **R5 Rack and R6 Server nodes only** — deliberately excluding R1 Pod, so
+that AZ assignment is always a whole-arc property of an existing node rather than a sub-arc partition problem. This
+resolves cleanly because AZ boundaries at rack granularity never need to split a single arc into pieces:
+
+- **R5 Rack (primary case):** `availability_zone` directly overrides the rack arc's **fill color**, replacing the
+  flat neutral rack fill from §11.3 with a colour drawn from a small qualitative accent palette, distinct from the
+  Data/Management/Border hues already in use elsewhere (§6.2, §11.3) so AZ never gets confused with plane identity.
+  The palette is deliberately **subdued/dimmed** rather than fully saturated — a rack's AZ assignment is a
+  background categorization signal, not an active-routing signal like the §6.2 link colours, so it should read
+  visually quieter than Data/Management tints on the same dark canvas while remaining distinguishable at a glance:
+  `#1F5C34` (dim Green), `#1E4E78` (dim Blue), `#7A2733` (dim Red), `#8C6A24` (dim Amber). AZ→colour assignment
+  is deterministic (e.g. a stable hash of the AZ id modulo palette length) so the same AZ id always renders the same
+  colour across sessions and across re-renders.
+- **R6 Server (override case only):** rendered only when a server's own `availability_zone` differs from its parent
+  rack's — e.g. a mixed-tenancy rack, or a server temporarily reassigned. Drawn as a thin outer-edge stroke in the
+  overriding AZ's colour (from the same palette), **not** a full arc fill, since R6's fill is otherwise reserved for
+  the neutral containment gradient (§11.3) and a full-fill override there would visually compete with the rack-level
+  signal one ring further in.
+- No link is ever drawn for AZ membership, and no ring geometry changes — same rationale as §7.7.
+
+If a deployment has more distinct AZ ids than the accent palette has entries, see §10 (AZ palette exhaustion) for the
+deferred fallback strategy — not yet solved by this revision.
 
 ---
 
@@ -362,6 +408,52 @@ Clicking a pod or rack arc can optionally filter the visualization to that subtr
 relative to the selected node's descendants only) — useful for inspecting a single rack's dual-plane, dual-leaf
 structure in isolation at Option C/D scale.
 
+### 8.6 Tooltip panel (hover detail)
+
+Replaces the plain browser-native tooltip with a structured, styled panel, fired from the same `mouseenter` event as
+the lineage hover (§8.3) — both effects run together, the panel does not steal or delay the lineage highlight.
+Content is assembled per-node from whichever attributes are actually populated; empty/`n/a` sections are omitted
+entirely rather than shown blank, so a plain spine switch's panel is much shorter than a rack's.
+
+**Layout, top to bottom (hairline divider between each present section):**
+
+1. **Header row** — a small square swatch of the node's own arc fill (§11.3, §7.8) + the node `label` in bold
+   primary text, with an inline ring/plane badge (e.g. "R5 · Rack", "R4 · Data Leaf").
+2. **Meta row** — `weight` and arc span in degrees, secondary/muted text, single line, de-emphasized.
+3. **MAAS Control Plane section** (§7.7) — rendered only if `rack_controller_ids.length > 0`. Small-caps section
+   label "MAAS CONTROL PLANE" with a 2px left border in Ubuntu Orange (an accent tie to "control," distinct from the
+   Data-plane hue it shares the palette with — see styling below), body lists controller IDs
+   (e.g. `rc-03, rc-07`) in monospace.
+4. **Availability Zone section** (§7.8) — rendered only if `availability_zone !== "n/a"`. Small-caps section label
+   "AVAILABILITY ZONE" with a 2px left border in that AZ's own assigned accent colour (§7.8's qualitative palette),
+   body shows the AZ id next to a matching colour swatch. On an R6 override row (server AZ ≠ parent rack AZ), the
+   section additionally states the parent rack's AZ for contrast, e.g. "az-blue (rack: az-green)".
+5. **Categorization footer** — `trust_tier` and `failure_domain_role` as small inline text badges (reusing the
+   border-style/severity encoding already defined in §7.2/§7.3 as a colour/pattern swatch, not new iconography) —
+   this is a textual restatement of what's already visible on the arc itself, included for accessibility/screen
+   reader parity rather than as new information.
+6. **Metadata** — any free-form `metadata.description` text, italic, muted, always last.
+
+**Styling (dark theme, §11.1/§11.2):**
+
+| Property | Value |
+|---|---|
+| Panel background | `#1E1E1E` (chart panel surface, §11.1) |
+| Panel border | `1px solid rgba(247, 247, 247, 0.12)`, 4px corner radius |
+| Panel shadow | A subtle drop shadow is permitted here (unlike chart geometry, §6.3's flat-fill rule applies only to the SVG chart surface, not floating UI chrome) |
+| Padding | `10px 12px`; max-width `260px` |
+| Body font | Ubuntu, 11px, primary text `#F7F7F7` |
+| Header font | Ubuntu, 12px, semibold, primary text `#F7F7F7` |
+| Monospace fields | Ubuntu Mono, for rack controller IDs and any rack/server label, consistent with §11.2's R5/R6 arc-label treatment |
+| Section label | Ubuntu, 9px, small-caps, `letter-spacing: 0.05em`, secondary/muted text `#9C948C`, 2px accent left-border per section (Orange for Control Plane, AZ colour for Availability Zone) |
+| Divider | `1px solid rgba(247, 247, 247, 0.08)` hairline between sections |
+
+**Positioning:** anchored 12px offset from the cursor, following pointer movement while hovering; flips to the
+opposite side of the cursor when it would overflow the SVG viewport edge, so the panel never clips off-screen.
+
+**Dismissal:** on `mouseleave`, matching §8.3's resting-state restoration — no separate close affordance needed since
+this is a hover panel, not a pinned/click-to-open one.
+
 ---
 
 ## 9. Data Schema
@@ -380,7 +472,22 @@ structure in isolation at Option C/D scale.
       "leaf_role": "n/a",
       "trust_tier": "operator",
       "failure_domain_role": "redundant",
+      "rack_controller_ids": ["rc-03", "rc-07"],
+      "availability_zone": "az-blue",
       "metadata": {}
+    },
+    {
+      "id": "server-14-06",
+      "ring": "R6",
+      "label": "R14-Srv06",
+      "weight": 1,
+      "plane": "shared",
+      "leaf_role": "n/a",
+      "trust_tier": "tenant",
+      "failure_domain_role": "n/a",
+      "rack_controller_ids": [],
+      "availability_zone": "az-green",
+      "metadata": { "rack": "rack-14", "note": "AZ override — reassigned out of the rack's default az-blue." }
     },
     {
       "id": "leaf-data-14a",
@@ -391,6 +498,8 @@ structure in isolation at Option C/D scale.
       "leaf_role": "access",
       "trust_tier": "operator",
       "failure_domain_role": "n/a",
+      "rack_controller_ids": [],
+      "availability_zone": "n/a",
       "metadata": {}
     },
     {
@@ -402,6 +511,8 @@ structure in isolation at Option C/D scale.
       "leaf_role": "border",
       "trust_tier": "operator",
       "failure_domain_role": "n/a",
+      "rack_controller_ids": [],
+      "availability_zone": "n/a",
       "metadata": {}
     }
   ],
@@ -436,7 +547,11 @@ schema-level special case required. `border-leaf-1` demonstrates the Border Leaf
 it takes normal spine-adjacency `routing_adjacency` links (not shown above) exactly like `leaf-data-14a` — no
 additional external-connectivity link is needed, since the `leaf_role: "border"` attribute alone conveys its
 external/WAN/DCI role. The `tor-1`/`tor-2` pair demonstrates the same-ring `peer_adjacency` exception (§6.1a) used in
-Option B, rendered with the standard dendrogram path grammar (§6.4) and a distinct plane color (§6.2).
+Option B, rendered with the standard dendrogram path grammar (§6.4) and a distinct plane color (§6.2). `rack-14`
+demonstrates the MAAS control-plane attribute (§7.7 — two redundant rack controllers) and the primary Availability
+Zone case (§7.8 — rack arc fill overridden to `az-blue`'s accent colour); `server-14-06` demonstrates the R6 AZ
+override case (§7.8) — its own `availability_zone` (`az-green`) differs from its parent rack's (`az-blue`), which is
+what triggers the thin outer-edge override stroke rather than a full-fill change.
 
 ### 9.2 Configuration parameters
 
@@ -463,6 +578,23 @@ Option B, rendered with the standard dendrogram path grammar (§6.4) and a disti
 3. **Whether Option A merits a simplified presentation.** With R1–R4 empty, the ring model produces a mostly-empty
    center. A non-radial fallback card for Option A may be more appropriate, but this is low-risk to defer until the
    other options are validated.
+
+4. **Cloud-management cluster membership — descoped, may return.** An earlier draft of this spec proposed a
+   `cluster_membership` attribute (Ceph replica sets, LXD clusters, MicroOVN control-plane, Kubernetes node groups)
+   plus a cross-cluster highlighting interaction mode. Both are descoped from the current revision pending clearer
+   requirements — reintroducing it later would need its own same-tier "highlight by shared attribute" selection
+   model distinct from the ancestor-lineage hover in §8.3, since cluster membership is a set relationship, not a
+   parent/child one.
+
+5. **AZ palette exhaustion (§7.8).** The Availability Zone accent palette is a small fixed qualitative set (4 colours
+   in this revision). A deployment with more distinct AZ ids than palette entries needs a fallback — candidates
+   include reusing colours with a distinguishing pattern/hatch, or falling back to tooltip-only disambiguation
+   (§8.6) beyond the palette's capacity — deferred pending a fixture with more than 4 AZs.
+
+6. **MAAS "Fabric" naming collision (§7.7).** MAAS's own data model uses "Fabric" to mean a group of associated
+   VLANs — unrelated to this spec's pervasive use of "physical fabric" for the Clos data/management networks. If a
+   future revision represents MAAS Fabric/VLAN/Subnet objects directly (beyond the rack-controller grouping already
+   in §7.7), it must use different terminology in this document to avoid conflating the two concepts.
 
 ---
 
@@ -541,18 +673,25 @@ Management plane-tint rule as R3.
 
 ### 11.5 Implementation status notes
 
-- **Border leaf as R4 ring member (§4.3, §7.5):** not yet rendered in the Option C fixture. The fixture's
-  `border-leaf-1` node still needs migrating from a `ring: "SAT"` satellite stub to a normal `ring: "R4"` node with
-  `leaf_role: "border"` and spine-adjacency links matching other R4 leaves — no additional link type is required, since
-  the attribute alone conveys its external role. This migration is tracked as an open follow-up to this spec revision,
-  not yet implemented in `data.js`/`layout.js`.
-- **ToR peer link (§6.1a):** not applicable to the Option C fixture (Option B only); no fixture exists yet for Option B.
-- **Plane-tinted fills and dark theme (§11.1, §11.3):** not yet implemented; the current Option C CSS/renderer still
-  uses the earlier light-surface neutral fills and light-mode link colors. Migrating to the dark palette and
-  plane-tinted node fills is tracked as an open follow-up.
-- **Parallel lane offset (§6.6):** not yet implemented; the current renderer draws all links through a single shared
-  gap-midpoint radius per ring gap.
-- **Label degradation (§8.4):** not implemented at Option C scale. Server arcs at R6 are approximately 63 px arc-length
-  at mid-ring radius — sufficient for a short monospace label. Implement when extending to larger options or denser
-  fixtures.
+- **Border leaf as R4 ring member (§4.3, §7.5):** implemented. `border-leaf-1`/`border-leaf-2` are ordinary
+  `ring: "R4"` nodes with `leaf_role: "border"` and full-mesh spine-adjacency links, matching other R4 leaves.
+- **ToR peer link (§6.1a):** not applicable to the Option C fixture (Option B only); no fixture exists yet for
+  Option B. The rendering path (`radialLinkPath`'s same-ring/virtual-gap branch) is implemented and ready for a
+  future Option B fixture.
+- **Plane-tinted fills and dark theme (§11.1, §11.3):** implemented — dark canvas/panel/text surfaces, plane-tinted
+  R3/R4 fills, and the dedicated Border Leaf Sage fill are all live in `layout.js`/`render.js`/`style.css`.
+- **Parallel lane offset (§6.6):** implemented — Data/Management/Containment/Peer-adjacency lanes are offset by a
+  fixed px amount from each gap's midpoint radius (`LANE_OFFSET_PX` in `render.js`).
+- **Label degradation (§8.4):** implemented at the arc-label level (`MIN_LABEL_DEG` in `render.js` hides inline
+  labels below a per-ring angular threshold); full hover/click-triggered re-reveal beyond the tooltip panel is not
+  separately implemented, since the tooltip panel (§8.6) already serves that purpose on hover.
+- **Tooltip panel (§8.6):** implemented, including the R5/R6 monospace title treatment and the categorization
+  footer's colour/pattern swatches (solid/dashed/hatched trust-tier swatch, spof/redundant failure-domain dot) —
+  both were gaps in an earlier pass and have since been closed in `tooltip.js`/`style.css`.
+- **MAAS control-plane rendering (§7.7):** the rack-controller badge previously drawn on the R1/R5 arc has been
+  **removed**. Controller assignment is now surfaced exclusively through the tooltip's "MAAS Control Plane" section
+  (§8.6) — there is no on-canvas indicator of `rack_controller_ids` until a node is hovered.
+- **Availability Zone palette (§7.8):** the AZ accent palette has been dimmed from the original fully-saturated
+  candidate set to a subdued/muted set (`#1F5C34`/`#1E4E78`/`#7A2733`/`#8C6A24`), so AZ fill overrides read as a
+  quieter background signal against the dark canvas rather than competing visually with Data/Management link colours.
 

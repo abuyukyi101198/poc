@@ -6,12 +6,16 @@
  * Phase 5: Canonical/Ubuntu brand colours — dark-theme surface (spec §11.1),
  *          plane-tinted node fills (§11.3), parallel lane-offset "cable"
  *          link rendering (§6.6), and Border Leaf/peer-adjacency support.
+ * Phase 7: Availability Zone rack-fill / server-override styling (§7.8).
+ *          MAAS control-plane data (§7.7) is surfaced via the tooltip only
+ *          (tooltip.js) — no arc-level badge is rendered.
  *
  * Phase 4 hover/focus and plane toggles are in interaction.js.
+ * Tooltip panel content (§8.6) is in tooltip.js.
  */
 
 import * as d3 from 'd3';
-import { computeLayout, CONFIG, RING_BANDS, RING_COLORS, PLANE_TINTS, BORDER_LEAF_FILL } from './layout.js';
+import { computeLayout, CONFIG, RING_BANDS, RING_COLORS, PLANE_TINTS, BORDER_LEAF_FILL, getAZColor } from './layout.js';
 
 // Minimum arc span (degrees) at which an inline label is shown.
 // Arcs narrower than this degrade to tooltip-only (§8.4).
@@ -73,18 +77,39 @@ export function linkColorKey(d) {
 }
 
 /**
- * getNodeFill(node) — resolves arc fill colour per spec §11.3.
+ * getNodeFill(node) — resolves arc fill colour per spec §11.3/§7.8.
+ *   - R5 Rack nodes with a populated `availability_zone` (§7.8) get the AZ's
+ *     accent colour, overriding the flat neutral rack fill — this takes
+ *     priority since AZ is a whole-rack tenancy signal, not a plane one.
  *   - R4 Border Leaves (`leaf_role: "border"`) get the dedicated Sage fill,
  *     regardless of `plane`.
  *   - R3/R4 routing nodes otherwise get their plane-tinted fill (Data/Mgmt).
- *   - All other rings (R1, R5, R6 — containment-only) get the flat neutral
- *     RING_COLORS fill.
+ *   - All other rings (R1, R6 — containment-only, and R5 with no AZ) get the
+ *     flat neutral RING_COLORS fill.
  */
 export function getNodeFill(node) {
+  if (node.ring === 'R5') {
+    const azColor = getAZColor(node.availability_zone);
+    if (azColor) return azColor;
+  }
   if (node.ring === 'R4' && node.leaf_role === 'border') return BORDER_LEAF_FILL;
   const tint = PLANE_TINTS[node.ring]?.[node.plane];
   if (tint) return tint;
   return RING_COLORS[node.ring] ?? '#3A3835';
+}
+
+/**
+ * getArcOverrideStroke(node, rackAzById) — §7.8 R6 AZ-override rendering.
+ * Returns the overriding AZ's accent colour when an R6 server's own
+ * `availability_zone` differs from its parent rack's, else null (caller
+ * falls back to the default arc-separator stroke).
+ */
+export function getArcOverrideStroke(node, rackAzById) {
+  if (node.ring !== 'R6') return null;
+  if (!node.availability_zone || node.availability_zone === 'n/a') return null;
+  const rackAz = rackAzById.get(node.metadata?.rack);
+  if (!rackAz || rackAz === node.availability_zone) return null;
+  return getAZColor(node.availability_zone);
 }
 
 const TWO_PI = 2 * Math.PI;
@@ -98,6 +123,11 @@ const TWO_PI = 2 * Math.PI;
  */
 export function init(rootSelector = '#topology') {
   const { layoutNodes, links } = computeLayout();
+
+  // Rack id → availability_zone, for the R6 AZ-override stroke check (§7.8).
+  const rackAzById = new Map(
+    layoutNodes.filter(n => n.ring === 'R5').map(n => [n.id, n.availability_zone])
+  );
 
   // ── SVG root ──────────────────────────────────────────────────────────────────
   const svg = d3.select(rootSelector)
@@ -131,6 +161,8 @@ export function init(rootSelector = '#topology') {
     .cornerRadius(2);
 
   // ── Node arcs ─────────────────────────────────────────────────────────────────
+  // Native <title> tooltip removed (spec §8.6) — replaced by the styled HTML
+  // tooltip panel wired up in tooltip.js, using the same layoutNodes/root.
   root.append('g')
     .attr('class', 'arcs')
     .selectAll('path.node-arc')
@@ -140,13 +172,8 @@ export function init(rootSelector = '#topology') {
       .attr('id',           d => `arc-${d.id}`)
       .attr('d',            arcGen)
       .attr('fill',         d => getNodeFill(d))
-      .attr('stroke',       '#151515')
-      .attr('stroke-width', 1.5)
-    .append('title')
-      .text(d => {
-        const spanDeg = ((d.endAngle - d.startAngle) * 180 / Math.PI).toFixed(1);
-        return `${d.label}\nRing: ${d.ring}  Plane: ${d.plane}  Weight: ${d.weight}\nArc span: ${spanDeg}°`;
-      });
+      .attr('stroke',       d => getArcOverrideStroke(d, rackAzById) ?? '#151515')
+      .attr('stroke-width', d => getArcOverrideStroke(d, rackAzById) ? 3 : 1.5);
 
   // ── Links placeholder (Phase 2) ───────────────────────────────────────────────
   // Created here (after arcs, before labels) to fix the DOM stacking order.
@@ -211,6 +238,10 @@ export function init(rootSelector = '#topology') {
     .attr('fill',              '#9C948C')    // §11.1 dark-theme secondary/muted text
     .text('Option C');
 
+  // Note: MAAS control-plane rack-controller data (§7.7) is surfaced exclusively
+  // via the tooltip's "MAAS Control Plane" section (§8.6) — no arc badge is
+  // rendered here; the rack arc itself carries no controller-count indicator.
+
   console.log(
     `[topology] Phase 1 rings complete — ${layoutNodes.length} arcs across`,
     [...new Set(layoutNodes.map(n => n.ring))].join(', ')
@@ -220,6 +251,7 @@ export function init(rootSelector = '#topology') {
   // Phase 2 calls drawLinks(root, layoutNodes, links) after this.
   return { svg, root, layoutNodes, links };
 }
+
 
 // ── Label helpers ─────────────────────────────────────────────────────────────
 

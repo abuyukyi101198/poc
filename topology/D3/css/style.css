@@ -237,3 +237,173 @@ footer {
   font-style: italic;
 }
 
+/* ── Phase 7 — Tooltip panel (§8.6) ───────────────────────────────────────── */
+/*
+ * Structured HTML overlay replacing the plain browser-native tooltip.
+ * Positioned/shown by tooltip.js; content assembled per-node with empty
+ * sections omitted. Styling values below match the spec §8.6 style table.
+ */
+.tooltip-panel {
+  position: fixed;
+  z-index: 1000;
+  max-width: 260px;
+  padding: 10px 12px;
+  background: #1E1E1E;                              /* §11.1 chart panel surface */
+  border: 1px solid rgba(247, 247, 247, 0.12);
+  border-radius: 4px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);        /* floating UI chrome — §6.3 flat-fill rule is chart-only */
+  font-family: 'Ubuntu', -apple-system, 'Segoe UI', sans-serif;
+  font-size: 11px;
+  color: #F7F7F7;
+  pointer-events: none;                              /* never intercepts hover from the SVG arc beneath it */
+}
+
+.tooltip-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.tooltip-swatch {
+  width: 10px;
+  height: 10px;
+  flex-shrink: 0;
+  border-radius: 2px;
+  border: 1px solid rgba(247, 247, 247, 0.25);
+}
+
+.tooltip-title {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tooltip-ring-badge {
+  font-size: 9px;
+  font-weight: 400;
+  color: #9C948C;
+  white-space: nowrap;
+}
+
+.tooltip-meta {
+  margin-top: 4px;
+  font-size: 10px;
+  color: #9C948C;
+}
+
+.tooltip-divider {
+  height: 1px;
+  margin: 8px 0;
+  background: rgba(247, 247, 247, 0.08);
+}
+
+.tooltip-section {
+  padding-left: 8px;
+  border-left: 2px solid #9C948C;
+}
+
+/* MAAS Control Plane section (§7.7) — Ubuntu Orange accent border */
+.tooltip-section--control {
+  border-left-color: #E95420;
+}
+
+.tooltip-section-label {
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #9C948C;
+  margin-bottom: 2px;
+}
+
+.tooltip-mono {
+  font-family: 'Ubuntu Mono', 'Courier New', monospace;
+  font-size: 10.5px;
+  color: #F7F7F7;
+}
+
+.tooltip-az {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10.5px;
+  color: #F7F7F7;
+}
+
+.tooltip-az-rack {
+  color: #9C948C;
+  font-weight: 400;
+}
+
+.tooltip-footer {
+  margin-top: 6px;
+  font-size: 10px;
+  color: #9C948C;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 10px;
+}
+
+/* §7.2 trust_tier encoding, restated as a small swatch in the tooltip footer
+   (§8.6 point 5) — solid border = operator, dashed border = tenant, hatched
+   fill = workload. Neutral warm-grey so the swatch reads as a categorization
+   indicator, not a plane/AZ colour. */
+.trust-swatch {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  margin-right: 3px;
+  vertical-align: -1px;
+  border-radius: 1px;
+  background: transparent;
+  border: 1.5px solid #C9C2B8;
+}
+
+.trust-swatch.trust-operator {
+  border-style: solid;
+}
+
+.trust-swatch.trust-tenant {
+  border-style: dashed;
+}
+
+.trust-swatch.trust-workload {
+  border-style: solid;
+  background-image: repeating-linear-gradient(
+    45deg,
+    #C9C2B8 0, #C9C2B8 1.5px,
+    transparent 1.5px, transparent 3.5px
+  );
+}
+
+/* §7.3 failure_domain_role encoding, restated as a small severity dot —
+   "spof" (single point of failure, rack-level) reads as an alert colour,
+   "redundant" (leaf-level failure domain) reads as a calmer confirm colour. */
+.failure-swatch {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 3px;
+  vertical-align: -1px;
+  border-radius: 50%;
+}
+
+.failure-swatch.failure-spof {
+  background: #C7162B;
+}
+
+.failure-swatch.failure-redundant {
+  background: #4E9C5A;
+}
+
+.tooltip-desc {
+  margin-top: 6px;
+  font-size: 10px;
+  font-style: italic;
+  color: #9C948C;
+}
+

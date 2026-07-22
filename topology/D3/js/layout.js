@@ -15,7 +15,8 @@
  *   - Multi-pass crossing minimisation (§5.2 step 2) — single-pass barycenter only.
  *   - Parent-group gutters beyond the rack-group gap in R6 (§5.2 step 4).
  *
- * Exports: CONFIG, RING_BANDS, RING_COLORS, PLANE_TINTS, BORDER_LEAF_FILL, computeLayout()
+ * Exports: CONFIG, RING_BANDS, RING_COLORS, PLANE_TINTS, BORDER_LEAF_FILL,
+ *          AZ_PALETTE, getAZColor(), computeLayout()
  */
 
 import { nodes as rawNodes, links as rawLinks } from '../data.js';
@@ -66,6 +67,33 @@ export const PLANE_TINTS = {
 };
 
 export const BORDER_LEAF_FILL = '#1F4725';   // Border Leaf (leaf_role: "border") — vivid Ubuntu Sage tint
+
+// ── Availability Zone accent palette — spec §7.8 ──────────────────────────────
+// Qualitative accent set for `availability_zone`, deliberately distinct from
+// the Data/Management/Border hues above so AZ colouring is never confused with
+// plane identity. AZ→colour assignment is a deterministic hash so a given AZ
+// id always resolves to the same colour across renders (§7.8).
+//
+// Deliberately subdued/dimmed tints (rather than the fully-saturated brand
+// accents) — a rack's AZ assignment is a background/categorization signal,
+// not an active-routing signal like the §6.2 link colours, so it should sit
+// visually quieter than Data/Management on the same dark canvas while
+// remaining distinguishable at a glance and in the legend/tooltip swatch.
+export const AZ_PALETTE = ['#1F5C34', '#1E4E78', '#7A2733', '#8C6A24']; // dim Green, Blue, Red, Amber
+
+/**
+ * getAZColor(azId) — resolves an availability_zone id to its accent colour.
+ * Returns null for "n/a"/falsy so callers can fall back to the node's
+ * normal fill/stroke without a null-colour rendering.
+ */
+export function getAZColor(azId) {
+  if (!azId || azId === 'n/a') return null;
+  let hash = 0;
+  for (let i = 0; i < azId.length; i++) {
+    hash = (hash * 31 + azId.charCodeAt(i)) >>> 0;
+  }
+  return AZ_PALETTE[hash % AZ_PALETTE.length];
+}
 
 // ── Rack display order ────────────────────────────────────────────────────────
 const RACK_ORDER = ['rack-1', 'rack-2', 'rack-3', 'rack-4', 'rack-5', 'rack-6'];

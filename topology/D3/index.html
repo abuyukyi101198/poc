@@ -73,6 +73,7 @@
   <script type="module">
     import { init, drawLinks } from './js/render.js';
     import { initInteraction } from './js/interaction.js';
+    import { initTooltip } from './js/tooltip.js';
 
     // Phase 1: static ring geometry
     const { root, layoutNodes, links } = init('#topology');
@@ -83,6 +84,9 @@
 
     // Phase 4: hover/focus behaviour + plane toggles
     initInteraction(root, layoutNodes, links);
+
+    // Phase 7: tooltip panel (§8.6) — MAAS Control Plane + Availability Zone detail
+    initTooltip(root, layoutNodes);
 
     window.__topology = { root, layoutNodes, links };
   </script>
