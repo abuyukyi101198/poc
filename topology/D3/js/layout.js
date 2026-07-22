@@ -188,6 +188,17 @@ export function computeLayout(nodes = rawNodes, links = rawLinks) {
  * Angles start at 0 (12 o'clock), increase clockwise.
  * The wrap-around gap (last arc end → first arc start going around) equals
  * exactly one gutter width, keeping the spacing consistent at the seam.
+ *
+ * §5.2 step 3 note — minimum arc width:
+ *   The spec requires a fixed minimum arc width so low-weight nodes stay
+ *   clickable/hoverable (§9.2 `min_arc_width_px: implementation-defined`).
+ *   This is NOT enforced here.  For the Option C fixture no arc falls below a
+ *   practical minimum — the narrowest arcs are individual server arcs at
+ *   weight 1/35 ≈ 0.170 rad, giving ~63 px arc-length at R6 mid-radius.
+ *   When this function is generalised to larger deployments (Options B/D) or
+ *   to bandwidth-weighted modes, add a two-pass clamp:
+ *     1. Give clamped nodes the minimum span.
+ *     2. Redistribute remaining available angle proportionally among the rest.
  */
 function assignAngles(sortedNodes, gutter) {
   const totalWeight = sortedNodes.reduce((s, n) => s + n.weight, 0);

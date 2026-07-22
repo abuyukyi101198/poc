@@ -1,11 +1,12 @@
 /**
- * render.js — Phase 1
+ * render.js — Phase 1 + 2
  *
- * Draws the static ring geometry: one arc segment per node, subtle ring-band
- * guide circles, and arc labels.  No links, no interaction yet.
+ * Phase 1: static ring geometry — arc segments, guide circles, labels.
+ * Phase 2: plain (unbundled) radial links for every parent/child relationship,
+ *          with plane colour coding (§6.2, Canonical brand palette).
  *
- * Phase 2 will add links (plain, then bundled in Phase 3).
- * Phase 4 will add hover/focus and plane toggles.
+ * Phase 3 will add hierarchical edge bundling (bundling.js).
+ * Phase 4 will add hover/focus and plane toggles (interaction.js).
  * Phase 5 will apply full Canonical/Ubuntu visual styling.
  */
 
@@ -31,10 +32,40 @@ const RING_NAMES = {
   R6: 'Server',
 };
 
+// ── Phase 2 link colours — Canonical/Ubuntu brand palette (action plan §6.1) ──
+// Resting-state tints (~60% white mix of the base colour).
+// Full-strength base on hover/focus in Phase 4.
+// Phase 5 will lock in the exact published Canonical tint percentages.
+//
+//   Ubuntu Orange base: #E95420  → 60% tint: #F29879
+//   Aubergine base:     #772953  → 60% tint: #AD7F98
+//   Warm grey (containment skeleton, should visually recede)
+//
+// NOTE: action plan §6.1 maps spec §6.2's placeholder "blue/green" language
+// to Orange (data) and Aubergine (mgmt) — these are NOT the spec's colours.
+export const LINK_COLORS = {
+  data:   '#F29879',   // Ubuntu Orange at ~60% tint
+  mgmt:   '#AD7F98',   // Aubergine at ~60% tint
+  shared: '#C8C2BC',   // Warm grey — physical containment skeleton
+};
+
+// Opacity separates the "structural skeleton" (containment) from the
+// routing-plane links that are the primary information signal.
+// Exported so Phase 4 interaction.js can restore resting opacity after hover.
+export const LINK_OPACITY = {
+  data:   0.65,
+  mgmt:   0.65,
+  shared: 0.25,   // containment links strongly recede (spec §6.2)
+};
+
+const TWO_PI = 2 * Math.PI;
+
 /**
  * init(rootSelector)
- * Renders Phase 1 geometry into the SVG element matched by rootSelector.
- * Returns { layoutNodes, links } for inspection / use by later phases.
+ * Renders ring geometry into the SVG element matched by rootSelector.
+ * Creates a `links` placeholder group in the correct DOM stacking order
+ * so Phase 2's drawLinks() can populate it without re-ordering elements.
+ * Returns { svg, root, layoutNodes, links }.
  */
 export function init(rootSelector = '#topology') {
   const { layoutNodes, links } = computeLayout();
@@ -51,8 +82,6 @@ export function init(rootSelector = '#topology') {
     .attr('transform', `translate(${CONFIG.cx},${CONFIG.cy})`);
 
   // ── Ring-band guide circles ───────────────────────────────────────────────────
-  // Thin circles at each ring's outer boundary give visual structure before arcs
-  // fill in.  Inner boundaries are implied by the arc inner radii.
   root.append('g')
     .attr('class', 'ring-guides')
     .selectAll('circle')
@@ -64,8 +93,6 @@ export function init(rootSelector = '#topology') {
       .attr('stroke-width', 0.6);
 
   // ── Arc generator ─────────────────────────────────────────────────────────────
-  // innerRadius / outerRadius / startAngle / endAngle are read directly from
-  // each layoutNode datum.
   const arcGen = d3.arc()
     .innerRadius(d => d.innerRadius)
     .outerRadius(d => d.outerRadius)
@@ -87,11 +114,15 @@ export function init(rootSelector = '#topology') {
       .attr('stroke',       '#ffffff')
       .attr('stroke-width', 1.5)
     .append('title')
-      // Native tooltip — replaced by styled tooltip in Phase 4
       .text(d => {
         const spanDeg = ((d.endAngle - d.startAngle) * 180 / Math.PI).toFixed(1);
         return `${d.label}\nRing: ${d.ring}  Plane: ${d.plane}  Weight: ${d.weight}\nArc span: ${spanDeg}°`;
       });
+
+  // ── Links placeholder (Phase 2) ───────────────────────────────────────────────
+  // Created here (after arcs, before labels) to fix the DOM stacking order.
+  // drawLinks() selects this group and populates it.
+  root.append('g').attr('class', 'links');
 
   // ── Arc labels ────────────────────────────────────────────────────────────────
   root.append('g')
@@ -152,11 +183,12 @@ export function init(rootSelector = '#topology') {
     .text('Option C');
 
   console.log(
-    `[topology] Phase 1 render complete — ${layoutNodes.length} arcs drawn across`,
+    `[topology] Phase 1 rings complete — ${layoutNodes.length} arcs across`,
     [...new Set(layoutNodes.map(n => n.ring))].join(', ')
   );
 
-  // Return for use by subsequent phases (Phase 2 will add links on top)
+  // Return for use by subsequent phases.
+  // Phase 2 calls drawLinks(root, layoutNodes, links) after this.
   return { svg, root, layoutNodes, links };
 }
 
@@ -198,4 +230,119 @@ function arcLabelFontSize(node) {
   }
 }
 
+// ── Phase 2 ───────────────────────────────────────────────────────────────────
+
+/**
+ * drawLinks(root, layoutNodes, links)
+ *
+ * Phase 2: draws every parent/child link in the fixture as a plain cubic
+ * Bezier curve, colour-coded by plane (§6.2, Canonical brand palette).
+ *
+ * Key structural test (spec §6.5): dual-leaf racks (rack-1, rack-2, rack-3)
+ * will naturally show TWO leaf→rack curves per plane — one from each leaf
+ * parent — with no special-case code.  This is the validation that the
+ * ring/link separation correctly handles the multi-parent case.
+ *
+ * Exclusions (spec §6.1):
+ *   - border-leaf-1 (ring='SAT') is not in layoutNodes → its link is silently
+ *     dropped by the has() filter below, per the Phase 1 stub decision.
+ *   - Same-ring and inter-non-adjacent-ring links: none exist in the fixture,
+ *     but the filter is harmless for any that might appear in later data.
+ */
+export function drawLinks(root, layoutNodes, links) {
+  const nodeById = new Map(layoutNodes.map(n => [n.id, n]));
+
+  // Only draw links where both endpoints resolved to layout nodes.
+  const drawable = links.filter(
+    l => nodeById.has(l.source) && nodeById.has(l.target)
+  );
+
+  root.select('.links')
+    .selectAll('path.link')
+    .data(drawable, d => `${d.source}→${d.target}`)  // key by endpoint pair
+    .join('path')
+      .attr('class',       d => `link plane-${d.plane} type-${d.type}`)
+      .attr('data-source', d => d.source)
+      .attr('data-target', d => d.target)
+      .attr('data-plane',  d => d.plane)
+      .attr('d', d => radialLinkPath(
+        nodeById.get(d.source),
+        nodeById.get(d.target)
+      ))
+      .attr('fill',         'none')
+      .attr('stroke',       d => LINK_COLORS[d.plane] ?? LINK_COLORS.shared)
+      .attr('stroke-width', 1)
+      .attr('opacity',      d => LINK_OPACITY[d.plane] ?? LINK_OPACITY.shared)
+    .append('title')
+      // Native tooltip (replaced by styled panel in Phase 4)
+      .text(d => `${d.source} → ${d.target}\nPlane: ${d.plane}  Type: ${d.type}`);
+
+  console.log(
+    `[topology] Phase 2 links drawn — ${drawable.length} links`,
+    `(${drawable.filter(l => l.plane === 'data').length} data,`,
+    `${drawable.filter(l => l.plane === 'mgmt').length} mgmt,`,
+    `${drawable.filter(l => l.plane === 'shared').length} containment)`
+  );
+}
+
+// ── Link path helper ──────────────────────────────────────────────────────────
+
+/**
+ * radialLinkPath(sourceNode, targetNode) → SVG path string
+ *
+ * Produces a cubic Bezier curve connecting the outer edge of the inner ring
+ * to the inner edge of the outer ring.  Control points sit at the midpoint
+ * radius between the two rings' boundaries, at each arc's midpoint angle.
+ *
+ * Special case — full-circle arcs (the R1 Pod node):
+ *   The pod spans 0→2π, so its geometric midpoint is π (6 o'clock).
+ *   Drawing all pod-originating links from the same 6 o'clock point would
+ *   collapse them visually.  Instead, for full-circle arcs, the source point
+ *   is placed at the TARGET's angle on the pod's outer radius — making each
+ *   pod link a straight radial line at its target's angular position.
+ *   (For pod→spine links the gap is only 18 px, so this barely matters;
+ *   for pod→rack containment links spanning all of R3+R4 it reads clearly.)
+ *
+ * Implementation note — Phase 3 bundling:
+ *   The control points (r_mid * sin/cos of each endpoint angle) are exactly
+ *   the "attraction points" used by hierarchical edge bundling (§6.4).
+ *   bundling.js will take these same control points and deflect them toward
+ *   a shared trunk radius; the path signature is designed to be compatible.
+ */
+function radialLinkPath(sourceNode, targetNode) {
+  // Ensure inner/outer orientation is consistent regardless of link direction.
+  const [inner, outer] = sourceNode.outerRadius <= targetNode.outerRadius
+    ? [sourceNode, targetNode]
+    : [targetNode, sourceNode];
+
+  const a_inner = (inner.startAngle + inner.endAngle) / 2;
+  const a_outer = (outer.startAngle + outer.endAngle) / 2;
+
+  const r_src  = inner.outerRadius;    // link starts at outer edge of inner ring
+  const r_tgt  = outer.innerRadius;    // link ends   at inner edge of outer ring
+  const r_mid  = (r_src + r_tgt) / 2; // control-point radius
+
+  // For a full-circle arc (Pod, R1), draw from the target's angle so each
+  // link is a straight radial line rather than all converging at 6 o'clock.
+  const isFullCircle = (inner.endAngle - inner.startAngle) >= TWO_PI * 0.99;
+  const a_src = isFullCircle ? a_outer : a_inner;
+
+  // Cartesian coordinates — D3 polar convention: 0 = top, clockwise.
+  //   x =  r · sin(θ),   y = -r · cos(θ)
+  const x0 = r_src * Math.sin(a_src);
+  const y0 = -r_src * Math.cos(a_src);
+  const x1 = r_mid * Math.sin(a_src);   // CP1: inner-ring angle, mid radius
+  const y1 = -r_mid * Math.cos(a_src);
+  const x2 = r_mid * Math.sin(a_outer); // CP2: outer-ring angle, mid radius
+  const y2 = -r_mid * Math.cos(a_outer);
+  const x3 = r_tgt * Math.sin(a_outer);
+  const y3 = -r_tgt * Math.cos(a_outer);
+
+  return (
+    `M${x0.toFixed(2)},${y0.toFixed(2)} ` +
+    `C${x1.toFixed(2)},${y1.toFixed(2)} ` +
+    `${x2.toFixed(2)},${y2.toFixed(2)} ` +
+    `${x3.toFixed(2)},${y3.toFixed(2)}`
+  );
+}
 

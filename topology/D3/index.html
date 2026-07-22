@@ -27,7 +27,7 @@
       Option C &nbsp;·&nbsp; Standard Leaf-Spine Pod
       &nbsp;·&nbsp; Radial Layered Graph with Hierarchical Edge Bundling
     </p>
-    <span class="phase-badge">Phase 1 — Static Ring Geometry</span>
+    <span class="phase-badge">Phase 2 — Plain Links</span>
   </header>
 
   <main class="chart-container">
@@ -47,12 +47,16 @@
   </footer>
 
   <script type="module">
-    import { init } from './js/render.js';
+    import { init, drawLinks } from './js/render.js';
 
-    // Kick off Phase 1 rendering.
-    // The returned object (svg, root, layoutNodes, links) is exposed on
-    // window.__topology for ad-hoc inspection in the browser console.
-    window.__topology = init('#topology');
+    // Phase 1: ring geometry
+    const { root, layoutNodes, links } = init('#topology');
+
+    // Phase 2: plain (unbundled) links, plane-colour-coded
+    drawLinks(root, layoutNodes, links);
+
+    // Expose for console inspection
+    window.__topology = { root, layoutNodes, links };
   </script>
 
 </body>
