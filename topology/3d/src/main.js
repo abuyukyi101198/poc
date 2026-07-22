@@ -1,49 +1,20 @@
-import * as THREE from 'three';
 import anime from 'animejs';
-import { createScene } from './scene.js';
-import { buildCylinder, updateCylinder, buildPipe, updatePipe, rightSilhouetteAnchor } from './blueprint.js';
+import { createScene }            from './scene.js';
+import { rightSilhouetteAnchor }  from './blueprint.js';
+import { generateScene }          from './layout/engine.js';
+import { topologyData }           from './data/topology.js';
 
-// ── Setup ────────────────────────────────────────────────────────────────────
+// ── Setup ─────────────────────────────────────────────────────────────────────
 
 const container = document.getElementById('canvas-container');
 const { renderer, scene, camera, controls } = createScene(container);
 
-// Build cylinders and pipes here
-const cylinders = [
-  buildCylinder(scene, { radius: 0.5, height: 1, angleStart: 0, angleSweep: Math.PI }),
-  buildCylinder(scene, { radius: 0.5, height: 1, angleStart: Math.PI, angleSweep: Math.PI }),
-];
+// ── Generate topology scene ───────────────────────────────────────────────────
 
-const pipes = [
-  buildPipe(scene, { outerRadius: 1, innerRadius: 0.502, height: 0.9, angleStart: 0, angleSweep: Math.PI / 2 }),
-  buildPipe(scene, { outerRadius: 1, innerRadius: 0.502, height: 0.9, angleStart: Math.PI / 2, angleSweep: Math.PI / 2 }),
-  buildPipe(scene, { outerRadius: 1, innerRadius: 0.502, height: 0.9, angleStart: Math.PI, angleSweep: Math.PI / 2 }),
-  buildPipe(scene, { outerRadius: 1, innerRadius: 0.502, height: 0.9, angleStart: Math.PI * 1.5, angleSweep: Math.PI / 2 }),
+const { superSpines, spines, leaves, racks, machines, dividers, allLineMaterials, updateAll } =
+  generateScene(scene, topologyData);
 
-  buildPipe(scene, { outerRadius: 2.5, innerRadius: 1.002, height: 0.8, angleStart: 0, angleSweep: Math.PI / 4 }),
-  buildPipe(scene, { outerRadius: 2.5, innerRadius: 1.002, height: 0.8, angleStart: Math.PI / 4, angleSweep: Math.PI / 4 }),
-  buildPipe(scene, { outerRadius: 2.5, innerRadius: 1.002, height: 0.8, angleStart: Math.PI / 2, angleSweep: Math.PI / 3 }),
-  buildPipe(scene, { outerRadius: 2.5, innerRadius: 1.002, height: 0.8, angleStart: 5 * Math.PI / 6, angleSweep: Math.PI / 6 }),
-  buildPipe(scene, { outerRadius: 2.5, innerRadius: 1.002, height: 0.8, angleStart: Math.PI, angleSweep: Math.PI / 6 }),
-  buildPipe(scene, { outerRadius: 2.5, innerRadius: 1.002, height: 0.8, angleStart: 7 * Math.PI / 6, angleSweep: Math.PI / 6 }),
-  buildPipe(scene, { outerRadius: 2.5, innerRadius: 1.002, height: 0.8, angleStart: 4 * Math.PI / 3, angleSweep: Math.PI / 6 }),
-  buildPipe(scene, { outerRadius: 2.5, innerRadius: 1.002, height: 0.8, angleStart: Math.PI * 1.5, angleSweep: Math.PI / 2 }),
-
-  buildPipe(scene, { outerRadius: 2.55, innerRadius: 2.502, height: 0.15, yOffset: 0.25, angleStart: Math.PI / 180, angleSweep: Math.PI / 8 - Math.PI / 90 }),
-  buildPipe(scene, { outerRadius: 2.55, innerRadius: 2.502, height: 0.15, yOffset: 0.25, angleStart: Math.PI / 8, angleSweep: Math.PI / 8 - Math.PI / 90 }),
-  buildPipe(scene, { outerRadius: 2.55, innerRadius: 2.502, height: 0.15, yOffset: 0, angleStart: Math.PI / 180, angleSweep: Math.PI / 8 - Math.PI / 90 }),
-  buildPipe(scene, { outerRadius: 2.55, innerRadius: 2.502, height: 0.15, yOffset: 0, angleStart: Math.PI / 8, angleSweep: Math.PI / 8 - Math.PI / 90 }),
-  buildPipe(scene, { outerRadius: 2.55, innerRadius: 2.502, height: 0.15, yOffset: -0.25, angleStart: Math.PI / 180, angleSweep: Math.PI / 8 - Math.PI / 90 }),
-  buildPipe(scene, { outerRadius: 2.55, innerRadius: 2.502, height: 0.15, yOffset: -0.25, angleStart: Math.PI / 8, angleSweep: Math.PI / 8 - Math.PI / 90 }),
-];
-
-// Collect all LineMaterials across every object for resize updates
-const allLineMaterials = [
-  ...cylinders.flatMap(c => c.lineMaterials),
-  ...pipes.flatMap(p => p.lineMaterials),
-];
-
-// ── SVG leader line (anchored to first cylinder) ──────────────────────────────
+// ── SVG leader line (anchored to first super-spine) ───────────────────────────
 
 const svgEl      = document.getElementById('annotations');
 const leaderPath = document.getElementById('leader-path');
@@ -59,14 +30,10 @@ function projectToScreen(v3) {
 }
 
 function placeLeader() {
-  const anchor = rightSilhouetteAnchor(cylinders[0], camera);
-  const s = projectToScreen(anchor);
-
-  const diagX = 60, diagY = 45, shoulder = 50;
-  const ex = s.x + diagX;
-  const ey = s.y - diagY;
-  const lx = ex + shoulder;
-
+  const anchor = rightSilhouetteAnchor(superSpines[0], camera);
+  const s      = projectToScreen(anchor);
+  const diagX  = 60, diagY = 45, shoulder = 50;
+  const ex = s.x + diagX, ey = s.y - diagY, lx = ex + shoulder;
   leaderDot.setAttribute('cx', s.x);
   leaderDot.setAttribute('cy', s.y);
   leaderPath.setAttribute('d', `M ${s.x} ${s.y} L ${ex} ${ey} L ${lx} ${ey}`);
@@ -80,57 +47,47 @@ window.addEventListener('resize', () => {
 });
 
 // ── Entrance animation ────────────────────────────────────────────────────────
+//
+// Animates each hierarchy level as a unit rather than per-object to keep the
+// timeline concise. Each level fades in 300 ms after the previous one.
 
 const tl = anime.timeline({ easing: 'easeInOutCubic' });
 
-cylinders.forEach((cyl, ci) => {
-  const base = ci * 200;
+function animateLevel(objects, t) {
+  const meshMats = objects.flatMap(o => o.meshes.map(m => m.material));
+  const lineMats = objects.flatMap(o => o.lines.map(l => l.material));
 
-  cyl.meshes.forEach(m => {
+  if (meshMats.length) {
     tl.add({
-      targets: m.material,
-      opacity: [0, 1],
-      duration: 600,
-      update: () => { m.material.needsUpdate = true; },
-    }, base);
-  });
-
-  cyl.lines.forEach((line, i) => {
+      targets: meshMats, opacity: [0, 1], duration: 600,
+      update: () => meshMats.forEach(m => { m.needsUpdate = true; }),
+    }, t);
+  }
+  if (lineMats.length) {
     tl.add({
-      targets: line.material,
-      opacity: [0, 1],
-      duration: 500,
-      update: () => { line.material.needsUpdate = true; },
-    }, base + 400 + i * 110);
-  });
-});
+      targets: lineMats, opacity: [0, 1], duration: 500,
+      update: () => lineMats.forEach(m => { m.needsUpdate = true; }),
+    }, t + 400);
+  }
+}
 
-pipes.forEach((pipe, pi) => {
-  const base = (cylinders.length + pi) * 200;
+animateLevel(superSpines, 0);
+animateLevel(spines,      300);
+animateLevel(leaves,      600);
+animateLevel(racks,       900);
+animateLevel(machines,    1200);
 
-  pipe.meshes.forEach(m => {
-    tl.add({
-      targets: m.material,
-      opacity: [0, 1],
-      duration: 600,
-      update: () => { m.material.needsUpdate = true; },
-    }, base);
-  });
-
-  pipe.lines.forEach((line, i) => {
-    tl.add({
-      targets: line.material,
-      opacity: [0, 1],
-      duration: 500,
-      update: () => { line.material.needsUpdate = true; },
-    }, base + 400 + i * 110);
-  });
-});
+// Sector divider lines appear alongside super-spines.
+if (dividers.length) {
+  const divMats = dividers.map(l => l.material);
+  tl.add({
+    targets: divMats, opacity: [0, 1], duration: 500,
+    update: () => divMats.forEach(m => { m.needsUpdate = true; }),
+  }, 0);
+}
 
 tl.add({
-  targets: svgEl,
-  opacity: [0, 1],
-  duration: 400,
+  targets: svgEl, opacity: [0, 1], duration: 400,
   complete: placeLeader,
 }, tl.duration + 100);
 
@@ -139,8 +96,7 @@ tl.add({
 function animate() {
   requestAnimationFrame(animate);
   controls.update();
-  cylinders.forEach(cyl  => updateCylinder(cyl,  camera));
-  pipes.forEach(pipe     => updatePipe(pipe,      camera));
+  updateAll(camera);
   renderer.render(scene, camera);
 }
 
