@@ -10,11 +10,31 @@ const { renderer, scene, camera, controls } = createScene(container);
 
 // Build cylinders and pipes here
 const cylinders = [
-  buildCylinder(scene, { radius: 1.5, height: 3.5, angleStart: 0, angleSweep: Math.PI * 1.5 }),
+  buildCylinder(scene, { radius: 0.5, height: 1, angleStart: 0, angleSweep: Math.PI }),
+  buildCylinder(scene, { radius: 0.5, height: 1, angleStart: Math.PI, angleSweep: Math.PI }),
 ];
 
 const pipes = [
-  buildPipe(scene, { outerRadius: 2.5, innerRadius: 1.8, height: 2.0, angleStart: Math.PI * 0.25, angleSweep: Math.PI }),
+  buildPipe(scene, { outerRadius: 1, innerRadius: 0.502, height: 0.9, angleStart: 0, angleSweep: Math.PI / 2 }),
+  buildPipe(scene, { outerRadius: 1, innerRadius: 0.502, height: 0.9, angleStart: Math.PI / 2, angleSweep: Math.PI / 2 }),
+  buildPipe(scene, { outerRadius: 1, innerRadius: 0.502, height: 0.9, angleStart: Math.PI, angleSweep: Math.PI / 2 }),
+  buildPipe(scene, { outerRadius: 1, innerRadius: 0.502, height: 0.9, angleStart: Math.PI * 1.5, angleSweep: Math.PI / 2 }),
+
+  buildPipe(scene, { outerRadius: 2.5, innerRadius: 1.002, height: 0.8, angleStart: 0, angleSweep: Math.PI / 4 }),
+  buildPipe(scene, { outerRadius: 2.5, innerRadius: 1.002, height: 0.8, angleStart: Math.PI / 4, angleSweep: Math.PI / 4 }),
+  buildPipe(scene, { outerRadius: 2.5, innerRadius: 1.002, height: 0.8, angleStart: Math.PI / 2, angleSweep: Math.PI / 3 }),
+  buildPipe(scene, { outerRadius: 2.5, innerRadius: 1.002, height: 0.8, angleStart: 5 * Math.PI / 6, angleSweep: Math.PI / 6 }),
+  buildPipe(scene, { outerRadius: 2.5, innerRadius: 1.002, height: 0.8, angleStart: Math.PI, angleSweep: Math.PI / 6 }),
+  buildPipe(scene, { outerRadius: 2.5, innerRadius: 1.002, height: 0.8, angleStart: 7 * Math.PI / 6, angleSweep: Math.PI / 6 }),
+  buildPipe(scene, { outerRadius: 2.5, innerRadius: 1.002, height: 0.8, angleStart: 4 * Math.PI / 3, angleSweep: Math.PI / 6 }),
+  buildPipe(scene, { outerRadius: 2.5, innerRadius: 1.002, height: 0.8, angleStart: Math.PI * 1.5, angleSweep: Math.PI / 2 }),
+
+  buildPipe(scene, { outerRadius: 2.55, innerRadius: 2.502, height: 0.15, yOffset: 0.25, angleStart: Math.PI / 180, angleSweep: Math.PI / 8 - Math.PI / 90 }),
+  buildPipe(scene, { outerRadius: 2.55, innerRadius: 2.502, height: 0.15, yOffset: 0.25, angleStart: Math.PI / 8, angleSweep: Math.PI / 8 - Math.PI / 90 }),
+  buildPipe(scene, { outerRadius: 2.55, innerRadius: 2.502, height: 0.15, yOffset: 0, angleStart: Math.PI / 180, angleSweep: Math.PI / 8 - Math.PI / 90 }),
+  buildPipe(scene, { outerRadius: 2.55, innerRadius: 2.502, height: 0.15, yOffset: 0, angleStart: Math.PI / 8, angleSweep: Math.PI / 8 - Math.PI / 90 }),
+  buildPipe(scene, { outerRadius: 2.55, innerRadius: 2.502, height: 0.15, yOffset: -0.25, angleStart: Math.PI / 180, angleSweep: Math.PI / 8 - Math.PI / 90 }),
+  buildPipe(scene, { outerRadius: 2.55, innerRadius: 2.502, height: 0.15, yOffset: -0.25, angleStart: Math.PI / 8, angleSweep: Math.PI / 8 - Math.PI / 90 }),
 ];
 
 // Collect all LineMaterials across every object for resize updates
