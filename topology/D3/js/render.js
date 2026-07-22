@@ -254,10 +254,17 @@ function arcLabelFontSize(node) {
 export function drawLinks(root, layoutNodes, links) {
   const nodeById = new Map(layoutNodes.map(n => [n.id, n]));
 
-  // Only draw links where both endpoints resolved to layout nodes.
-  const drawable = links.filter(
-    l => nodeById.has(l.source) && nodeById.has(l.target)
-  );
+  // Only draw links where both endpoints resolved to layout nodes,
+  // and exclude pod→rack containment links (R1↔R5) — the routing path
+  // through spine/leaf already expresses that containment relationship.
+  const drawable = links.filter(l => {
+    if (!nodeById.has(l.source) || !nodeById.has(l.target)) return false;
+    const s = nodeById.get(l.source);
+    const t = nodeById.get(l.target);
+    if ((s.ring === 'R1' && t.ring === 'R5') ||
+        (s.ring === 'R5' && t.ring === 'R1')) return false;
+    return true;
+  });
 
   root.select('.links')
     .selectAll('path.link')

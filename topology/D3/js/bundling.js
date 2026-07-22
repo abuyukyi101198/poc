@@ -42,6 +42,9 @@ export function computeBundledPaths(layoutNodes, links, bundleStrength = 0.7) {
     const s = nodeById.get(link.source);
     const t = nodeById.get(link.target);
     if (!s || !t) return;
+    // Skip pod→rack containment links (R1↔R5) — not drawn
+    if ((s.ring === 'R1' && t.ring === 'R5') ||
+        (s.ring === 'R5' && t.ring === 'R1')) return;
 
     const [inner, outer] = s.outerRadius <= t.outerRadius ? [s, t] : [t, s];
     const isFullCircle = (inner.endAngle - inner.startAngle) >= TWO_PI * 0.99;

@@ -1,26 +1,19 @@
 /**
  * interaction.js — Phase 4
  *
- * Implements two spec behaviours:
+ * §8.3  Hover / focus — parental lineage
+ *   Hovering a node arc illuminates its full ANCESTRAL LINEAGE up to the pod
+ *   root: the hovered node + every ancestor node (following parent links toward
+ *   lower ring depths) + every link whose both endpoints are in that set.
+ *   All unrelated arcs and links are dimmed.  Connected links are de-bundled to
+ *   their plain paths and stroked at full brand-colour strength.
+ *   Mouse leave restores resting state.
  *
- *   §8.3  Hover / focus
- *     Hovering a node arc:
- *       (a) Highlights all directly connected links in currently-visible planes.
- *       (b) De-bundles those links to full individual-strand resolution by
- *           swapping their bundled path (β=0.7) for a plain β=0 Bezier path.
- *       (c) Dims all unrelated arcs and links.
- *     Mouse leave restores resting state (resting opacities + re-bundled paths).
+ * §8.2  Plane toggles
+ *   Three pill buttons control which link planes are visible.
  *
- *   §8.2  Plane toggles
- *     Three flat pill buttons — Data / Management / Containment — control which
- *     link planes are visible.  Toggling never affects arc geometry; only the
- *     `display` attribute on matching link paths changes.
- *     Default: all three planes on (§8.2 specifies Data + Mgmt on by default;
- *     Containment is also on here since its grey skeleton links are low-weight
- *     and add structural context at no visual cost).
- *
- *   §8.4  Label degradation — skipped.
- *     Unnecessary at Option C scale (action plan §4 Phase 4 note).
+ * Ring depth order (root → leaves):
+ *   R1 (Pod) = 0 → R3 (Spine) = 1 → R4 (Leaf) = 2 → R5 (Rack) = 3 → R6 (Server) = 4
  *
  * Exports: initInteraction(root, layoutNodes, links)
  */
@@ -31,154 +24,157 @@ import { CONFIG } from './layout.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-/** Opacity for elements that are unrelated to the currently-focused node. */
 const DIM_OPACITY = 0.07;
 
-/**
- * Resting link opacities — mirrors LINK_OPACITY in render.js (Phase 5: all 1).
- * Tint colour carries the visual weight; no CSS opacity fade (action plan §6.1).
- */
+/** Maps ring id → depth (0 = root/pod, 4 = server/leaf). */
+const RING_DEPTH = { R1: 0, R3: 1, R4: 2, R5: 3, R6: 4 };
+
 const RESTING_LINK_OPACITY = { data: 1, mgmt: 1, shared: 1 };
 
-/**
- * Resting stroke colours — matches LINK_COLORS in render.js (67% tints).
- * Kept as a local duplicate to avoid coupling interaction.js to render.js.
- */
 const RESTING_LINK_STROKE = {
-  data:   '#F08D6A',   // Ubuntu Orange at 67% tint
-  mgmt:   '#A4708C',   // Aubergine at 67% tint
-  shared: '#D8D1CA',   // Canonical warm grey skeleton
+  data:   '#F08D6A',
+  mgmt:   '#A4708C',
+  shared: '#D8D1CA',
 };
 
-/**
- * Hover/focus stroke colours — full-strength brand colours (action plan §6.1).
- * Applied to connected links while a node is focused, then restored on blur.
- */
 const HOVER_LINK_STROKE = {
-  data:   '#E95420',   // Ubuntu Orange full strength
-  mgmt:   '#772953',   // Aubergine full strength
-  shared: '#AEA9A5',   // Canonical warm grey mid
+  data:   '#E95420',
+  mgmt:   '#772953',
+  shared: '#AEA9A5',
 };
+
+const RESTING_STROKE_WIDTH = 1;
+const HOVER_STROKE_WIDTH   = 1.5;
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
-/**
- * initInteraction(root, layoutNodes, links)
- *
- * Must be called AFTER init(), drawLinks(), and applyBundling() have
- * rendered the SVG — all `.node-arc` and `.link` elements must exist.
- *
- * @param {d3.Selection} root        — the `.topology-root` <g> element
- * @param {Array}        layoutNodes — output of computeLayout()
- * @param {Array}        links       — raw link array from data.js
- */
 export function initInteraction(root, layoutNodes, links) {
-  // ── Pre-compute both path maps ─────────────────────────────────────────────
-  // bundledPaths (β = CONFIG.bundleStrength): used to RESTORE after hover ends.
-  // plainPaths   (β = 0):                    used to DE-BUNDLE on hover (§8.3b).
+  const nodeById = new Map(layoutNodes.map(n => [n.id, n]));
+
   const bundledPaths = computeBundledPaths(layoutNodes, links, CONFIG.bundleStrength);
   const plainPaths   = computeBundledPaths(layoutNodes, links, 0);
 
-  // ── Per-node link index ────────────────────────────────────────────────────
-  // Maps each node id to the set of link-keys (source→target) that touch it.
-  const nodeLinksIdx = buildNodeLinksIndex(layoutNodes, links);
+  // Build node→link-key index, omitting pod→rack containment links (not drawn)
+  const nodeLinksIdx = buildNodeLinksIndex(layoutNodes, links, nodeById);
 
-  // ── Shared plane-visibility state (mutated by wireToggles click handlers) ────
-  // The DOM is the source of truth for which planes are visible (display attr on
-  // link paths).  `visible` tracks the same state as a JS object so wireToggles
-  // can compute the new state without re-reading the DOM.
   const visible = { data: true, mgmt: true, shared: true };
 
-  // ── §8.3 Hover / focus ────────────────────────────────────────────────────
   root.selectAll('.node-arc')
     .style('cursor', 'pointer')
-    .on('mouseenter', (event, d) => onFocus(root, d, nodeLinksIdx, plainPaths))
-    .on('mouseleave', ()          => onBlur (root, bundledPaths));
+    .on('mouseenter', (event, d) =>
+      onFocus(root, d, nodeLinksIdx, nodeById, plainPaths))
+    .on('mouseleave', () => onBlur(root, bundledPaths));
 
-  // ── §8.2 Plane toggles ────────────────────────────────────────────────────
   wireToggles(root, visible);
 
-  console.log('[topology] Phase 4 interaction initialised — hover + plane toggles active');
+  console.log('[topology] Phase 4 interaction initialised — lineage hover + plane toggles active');
 }
 
 // ── Hover handlers ────────────────────────────────────────────────────────────
 
-/**
- * onFocus — called on mouseenter of any node arc.
- *
- * Dims all unrelated arcs and links; highlights connected links and de-bundles
- * their paths to plain Bezier curves for individual-strand readability (§8.3b).
- * Connected links are also raised to the top of the links layer so they are
- * not obscured by dimmed links.
- */
-function onFocus(root, hoveredNode, nodeLinksIdx, plainPaths) {
-  const hid  = hoveredNode.id;
-  const keys = new Set(nodeLinksIdx.get(hid) ?? []);
+function onFocus(root, hoveredNode, nodeLinksIdx, nodeById, plainPaths) {
+  const { lineageNodeIds, lineageLinkKeys } =
+    collectLineage(hoveredNode.id, nodeLinksIdx, nodeById);
 
-  // Arcs: dim all except the hovered node
+  // Arcs: highlight lineage, dim the rest
   root.selectAll('.node-arc')
-    .attr('opacity', d => (d.id === hid ? 1 : DIM_OPACITY));
+    .attr('opacity', d => lineageNodeIds.has(d.id) ? 1 : DIM_OPACITY);
 
-  // Links: dim unrelated ones; highlight + de-bundle connected ones
+  // Links: highlight + de-bundle lineage links; dim the rest
   root.selectAll('.link').each(function(d) {
     const sel = d3.select(this);
-
-    // Links hidden by plane toggle must stay hidden — don't alter their state
     if (sel.attr('display') === 'none') return;
 
     const key = `${d.source}→${d.target}`;
 
-    if (keys.has(key)) {
-      // Connected: swap to plain (de-bundled) path, apply full-strength hover
-      // stroke colour (action plan §6.1 — full-strength on hover/focus),
-      // restore resting opacity, bring element to front within the links layer.
+    if (lineageLinkKeys.has(key)) {
       const plain = plainPaths.get(key);
       if (plain) sel.attr('d', plain);
-      sel.attr('stroke',  HOVER_LINK_STROKE[d.plane]  ?? HOVER_LINK_STROKE.shared)
-         .attr('opacity', RESTING_LINK_OPACITY[d.plane] ?? RESTING_LINK_OPACITY.shared)
+      sel.attr('stroke',       HOVER_LINK_STROKE[d.plane]    ?? HOVER_LINK_STROKE.shared)
+         .attr('opacity',      RESTING_LINK_OPACITY[d.plane] ?? RESTING_LINK_OPACITY.shared)
+         .attr('stroke-width', HOVER_STROKE_WIDTH)
          .raise();
     } else {
-      sel.attr('opacity', DIM_OPACITY);
+      sel.attr('opacity', DIM_OPACITY)
+         .attr('stroke-width', RESTING_STROKE_WIDTH);
     }
   });
 }
 
-/**
- * onBlur — called on mouseleave from any node arc.
- *
- * Restores all arcs and visible links to their resting state, re-applying
- * bundled paths to links that were de-bundled during the hover.
- */
 function onBlur(root, bundledPaths) {
-  // Arcs: full resting opacity
   root.selectAll('.node-arc').attr('opacity', 1);
 
-  // Links: resting opacity + re-bundle path
-  // Links hidden by plane toggle are skipped — they stay hidden.
   root.selectAll('.link').each(function(d) {
     const sel = d3.select(this);
     if (sel.attr('display') === 'none') return;
 
     const path = bundledPaths.get(`${d.source}→${d.target}`);
     if (path) sel.attr('d', path);
-    sel.attr('stroke',  RESTING_LINK_STROKE[d.plane]  ?? RESTING_LINK_STROKE.shared)
-       .attr('opacity', RESTING_LINK_OPACITY[d.plane] ?? RESTING_LINK_OPACITY.shared);
+    sel.attr('stroke',       RESTING_LINK_STROKE[d.plane]    ?? RESTING_LINK_STROKE.shared)
+       .attr('opacity',      RESTING_LINK_OPACITY[d.plane]   ?? RESTING_LINK_OPACITY.shared)
+       .attr('stroke-width', RESTING_STROKE_WIDTH);
   });
+}
+
+// ── Lineage traversal ─────────────────────────────────────────────────────────
+
+/**
+ * collectLineage(startId, nodeLinksIdx, nodeById)
+ *
+ * BFS upward through the ring hierarchy from `startId`, collecting:
+ *   lineageNodeIds — the hovered node + every ancestor (lower ring depth)
+ *   lineageLinkKeys — every link key whose both endpoints are in lineageNodeIds
+ *
+ * Because the BFS only follows edges toward lower ring depths, the traversal
+ * never crosses into sibling branches (e.g. hovering rack-1 won't pull in
+ * leaf-data-3 which serves a different rack group).  It DOES include all
+ * ancestors of every ancestor — so for a dual-leaf rack, both leaves and
+ * all spines connected to those leaves are included.
+ */
+function collectLineage(startId, nodeLinksIdx, nodeById) {
+  const lineageNodeIds = new Set([startId]);
+  const queue    = [startId];
+  const visited  = new Set([startId]);
+
+  // Pass 1: BFS upward — add ancestors only
+  while (queue.length > 0) {
+    const nodeId = queue.shift();
+    const node   = nodeById.get(nodeId);
+    if (!node) continue;
+    const depth = RING_DEPTH[node.ring] ?? 99;
+
+    for (const key of (nodeLinksIdx.get(nodeId) ?? [])) {
+      const [src, tgt] = key.split('→');
+      const otherId = src === nodeId ? tgt : src;
+      const other   = nodeById.get(otherId);
+      if (!other) continue;
+
+      const otherDepth = RING_DEPTH[other.ring] ?? 99;
+      // Only traverse toward the root (lower depth)
+      if (otherDepth < depth && !visited.has(otherId)) {
+        visited.add(otherId);
+        lineageNodeIds.add(otherId);
+        queue.push(otherId);
+      }
+    }
+  }
+
+  // Pass 2: collect every link whose both endpoints landed in lineageNodeIds
+  const lineageLinkKeys = new Set();
+  lineageNodeIds.forEach(nodeId => {
+    for (const key of (nodeLinksIdx.get(nodeId) ?? [])) {
+      const [src, tgt] = key.split('→');
+      if (lineageNodeIds.has(src) && lineageNodeIds.has(tgt)) {
+        lineageLinkKeys.add(key);
+      }
+    }
+  });
+
+  return { lineageNodeIds, lineageLinkKeys };
 }
 
 // ── Plane toggles ─────────────────────────────────────────────────────────────
 
-/**
- * wireToggles — attaches click handlers to elements with class `toggle-btn`
- * and a `data-plane` attribute in the host page.
- *
- * Each click:
- *   1. Flips `visible[plane]`.
- *   2. Toggles the `active` CSS class on the button.
- *   3. Sets `display: none` / removes `display` on all `.link[data-plane=X]`.
- *
- * Arc geometry is never modified (§8.2: "only link visibility changes").
- */
 function wireToggles(root, visible) {
   d3.selectAll('.toggle-btn').on('click', function() {
     const plane = d3.select(this).attr('data-plane');
@@ -187,10 +183,8 @@ function wireToggles(root, visible) {
     visible[plane] = !visible[plane];
     const nowOn = visible[plane];
 
-    // Update button active class
     d3.select(this).classed('active', nowOn);
 
-    // Show / hide link paths for this plane
     root.selectAll(`.link[data-plane="${plane}"]`)
       .attr('display', nowOn ? null : 'none');
   });
@@ -200,24 +194,23 @@ function wireToggles(root, visible) {
 
 /**
  * buildNodeLinksIndex — returns a Map<nodeId, linkKey[]>.
- *
- * For every drawable link, both its source and target node receive the link's
- * key in their respective arrays.  This is the lookup used by onFocus to
- * determine which links to highlight and de-bundle.
+ * Pod→rack containment links (R1↔R5) are excluded because they are not drawn.
  */
-function buildNodeLinksIndex(layoutNodes, links) {
-  const nodeById = new Map(layoutNodes.map(n => [n.id, n]));
-  const index    = new Map(layoutNodes.map(n => [n.id, []]));
+function buildNodeLinksIndex(layoutNodes, links, nodeById) {
+  const index = new Map(layoutNodes.map(n => [n.id, []]));
 
   links.forEach(link => {
-    if (!nodeById.has(link.source) || !nodeById.has(link.target)) return;
+    const s = nodeById.get(link.source);
+    const t = nodeById.get(link.target);
+    if (!s || !t) return;
+    // Skip pod→rack containment links (not drawn)
+    if ((s.ring === 'R1' && t.ring === 'R5') ||
+        (s.ring === 'R5' && t.ring === 'R1')) return;
+
     const key = `${link.source}→${link.target}`;
-    index.get(link.source).push(key);
-    index.get(link.target).push(key);
+    index.get(link.source)?.push(key);
+    index.get(link.target)?.push(key);
   });
 
   return index;
 }
-
-
-
