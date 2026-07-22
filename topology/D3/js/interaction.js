@@ -5,9 +5,8 @@
  *   Hovering a node arc illuminates its full ANCESTRAL LINEAGE up to the pod
  *   root: the hovered node + every ancestor node (following parent links toward
  *   lower ring depths) + every link whose both endpoints are in that set.
- *   All unrelated arcs and links are dimmed.  Connected links are de-bundled to
- *   their plain paths and stroked at full brand-colour strength.
- *   Mouse leave restores resting state.
+ *   All unrelated arcs and links are dimmed.  Connected links are stroked at
+ *   full brand-colour strength.  Mouse leave restores resting state.
  *
  * §8.2  Plane toggles
  *   Three pill buttons control which link planes are visible.
@@ -19,8 +18,6 @@
  */
 
 import * as d3 from 'd3';
-import { computeBundledPaths } from './bundling.js';
-import { CONFIG } from './layout.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -51,9 +48,6 @@ const HOVER_STROKE_WIDTH   = 1.5;
 export function initInteraction(root, layoutNodes, links) {
   const nodeById = new Map(layoutNodes.map(n => [n.id, n]));
 
-  const bundledPaths = computeBundledPaths(layoutNodes, links, CONFIG.bundleStrength);
-  const plainPaths   = computeBundledPaths(layoutNodes, links, 0);
-
   // Build node→link-key index, omitting pod→rack containment links (not drawn)
   const nodeLinksIdx = buildNodeLinksIndex(layoutNodes, links, nodeById);
 
@@ -62,8 +56,8 @@ export function initInteraction(root, layoutNodes, links) {
   root.selectAll('.node-arc')
     .style('cursor', 'pointer')
     .on('mouseenter', (event, d) =>
-      onFocus(root, d, nodeLinksIdx, nodeById, plainPaths))
-    .on('mouseleave', () => onBlur(root, bundledPaths));
+      onFocus(root, d, nodeLinksIdx, nodeById))
+    .on('mouseleave', () => onBlur(root));
 
   wireToggles(root, visible);
 
@@ -72,7 +66,7 @@ export function initInteraction(root, layoutNodes, links) {
 
 // ── Hover handlers ────────────────────────────────────────────────────────────
 
-function onFocus(root, hoveredNode, nodeLinksIdx, nodeById, plainPaths) {
+function onFocus(root, hoveredNode, nodeLinksIdx, nodeById) {
   const { lineageNodeIds, lineageLinkKeys } =
     collectLineage(hoveredNode.id, nodeLinksIdx, nodeById);
 
@@ -80,7 +74,7 @@ function onFocus(root, hoveredNode, nodeLinksIdx, nodeById, plainPaths) {
   root.selectAll('.node-arc')
     .attr('opacity', d => lineageNodeIds.has(d.id) ? 1 : DIM_OPACITY);
 
-  // Links: highlight + de-bundle lineage links; dim the rest
+  // Links: highlight lineage links; dim the rest
   root.selectAll('.link').each(function(d) {
     const sel = d3.select(this);
     if (sel.attr('display') === 'none') return;
@@ -88,8 +82,6 @@ function onFocus(root, hoveredNode, nodeLinksIdx, nodeById, plainPaths) {
     const key = `${d.source}→${d.target}`;
 
     if (lineageLinkKeys.has(key)) {
-      const plain = plainPaths.get(key);
-      if (plain) sel.attr('d', plain);
       sel.attr('stroke',       HOVER_LINK_STROKE[d.plane]    ?? HOVER_LINK_STROKE.shared)
          .attr('opacity',      RESTING_LINK_OPACITY[d.plane] ?? RESTING_LINK_OPACITY.shared)
          .attr('stroke-width', HOVER_STROKE_WIDTH)
@@ -101,15 +93,12 @@ function onFocus(root, hoveredNode, nodeLinksIdx, nodeById, plainPaths) {
   });
 }
 
-function onBlur(root, bundledPaths) {
+function onBlur(root) {
   root.selectAll('.node-arc').attr('opacity', 1);
 
   root.selectAll('.link').each(function(d) {
     const sel = d3.select(this);
     if (sel.attr('display') === 'none') return;
-
-    const path = bundledPaths.get(`${d.source}→${d.target}`);
-    if (path) sel.attr('d', path);
     sel.attr('stroke',       RESTING_LINK_STROKE[d.plane]    ?? RESTING_LINK_STROKE.shared)
        .attr('opacity',      RESTING_LINK_OPACITY[d.plane]   ?? RESTING_LINK_OPACITY.shared)
        .attr('stroke-width', RESTING_STROKE_WIDTH);

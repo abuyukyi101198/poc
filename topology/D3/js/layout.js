@@ -26,7 +26,6 @@ export const CONFIG = {
   height: 940,
   cx: 470,   // SVG centre x
   cy: 470,   // SVG centre y
-  bundleStrength: 0.7,   // §9.2 default — 0 = separate curves, 1 = maximal trunk
 };
 
 // ── Ring radii (inner → outer).  Five rings populated for Option C. ────────────

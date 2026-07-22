@@ -33,7 +33,7 @@ const TWO_PI = 2 * Math.PI;
  *
  * Links whose endpoints are not in layoutNodes are silently excluded.
  */
-export function computeBundledPaths(layoutNodes, links, bundleStrength = 0.7) {
+export function computeBundledPaths(layoutNodes, links) {
   const nodeById = new Map(layoutNodes.map(n => [n.id, n]));
 
   const pathMap = new Map();

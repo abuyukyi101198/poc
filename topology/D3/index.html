@@ -69,17 +69,15 @@
   </footer>
 
   <script type="module">
-    import { init, drawLinks, applyBundling } from './js/render.js';
-    import { initInteraction }               from './js/interaction.js';
+    import { init, drawLinks } from './js/render.js';
+    import { initInteraction } from './js/interaction.js';
 
     // Phase 1: static ring geometry
     const { root, layoutNodes, links } = init('#topology');
 
-    // Phase 2: plain (unbundled) links, plane-colour-coded
+    // Phase 2: plain links, plane-colour-coded
     drawLinks(root, layoutNodes, links);
 
-    // Phase 3: replace plain paths with hierarchically-bundled paths
-    applyBundling(root, layoutNodes, links);
 
     // Phase 4: hover/focus behaviour + plane toggles
     initInteraction(root, layoutNodes, links);
