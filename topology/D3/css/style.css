@@ -1,9 +1,10 @@
 /*
- * style.css — Phase 5: Canonical / Ubuntu brand visual treatment
+ * style.css — Phase 5 + 6: Canonical / Ubuntu brand visual treatment
  *
  * §6.1  Colour palette  — Ubuntu Orange / Aubergine / warm grey, on-palette tints
  * §6.2  Typography      — Ubuntu typeface via Google Fonts CDN
  * §6.3  Visual language — flat fills, no gradients, no shadows, generous white space
+ * Phase 6 additions: ring-depth legend, header polish, phase badge removed.
  */
 
 /* ── Ubuntu font — Google Fonts CDN ──────────────────────────────────────── */
@@ -57,20 +58,6 @@ body {
   color: #767676;             /* Canonical secondary text */
   margin-top: 12px;
   letter-spacing: 0.02em;
-}
-
-/* Phase badge — temporary development marker; removed in Phase 6 polish */
-.phase-badge {
-  display: inline-block;
-  margin-top: 12px;
-  padding: 2px 10px;
-  font-size: 10px;
-  font-weight: 500;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: #767676;
-  border: 1px solid #d4cdc8;
-  border-radius: 2px;
 }
 
 /* ── Chart container ──────────────────────────────────────────────────────── */
@@ -184,5 +171,63 @@ footer {
   font-size: 11px;
   color: #aaa;
   text-align: center;
+}
+
+/* ── Phase 6 — Ring depth legend ─────────────────────────────────────────── */
+/*
+ * Static key showing the five populated rings for Option C, innermost to
+ * outermost.  Each ring has a coloured chip matching its arc fill colour
+ * (RING_COLORS in layout.js).  Sits below the plane-toggle controls strip.
+ */
+.ring-legend {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: center;
+  flex-wrap: wrap;
+  padding: 0 32px 32px;
+}
+
+/* Individual ring chip + label */
+.legend-ring {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: #3d3531;
+  cursor: default;
+}
+
+/* Coloured square chip — background set per data-ring attribute below */
+.legend-ring::before {
+  content: '';
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  border-radius: 1px;
+  border: 1px solid rgba(0, 0, 0, 0.10);
+}
+
+/* Chip colours — must match RING_COLORS in layout.js */
+.legend-ring[data-ring="R1"]::before { background-color: #D6CFC9; }   /* Pod */
+.legend-ring[data-ring="R3"]::before { background-color: #DEDAD4; }   /* Spine */
+.legend-ring[data-ring="R4"]::before { background-color: #E3DDD8; }   /* Leaf */
+.legend-ring[data-ring="R5"]::before { background-color: #E8E2DC; }   /* Rack */
+.legend-ring[data-ring="R6"]::before { background-color: #EDE8E3; }   /* Server */
+
+/* Arrow between ring chips */
+.legend-arrow {
+  font-size: 10px;
+  color: #aea9a5;
+  font-weight: 300;
+  flex-shrink: 0;
+}
+
+/* Interaction hint appended at the end of the ring legend */
+.legend-hint {
+  font-size: 11px;
+  color: #aea9a5;
+  margin-left: 6px;
+  font-style: italic;
 }
 

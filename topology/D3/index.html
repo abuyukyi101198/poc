@@ -27,7 +27,6 @@
       Option C &nbsp;·&nbsp; Standard Leaf-Spine Pod
       &nbsp;·&nbsp; Radial Layered Graph with Hierarchical Edge Bundling
     </p>
-    <span class="phase-badge">Phase 5 — Visual Styling</span>
   </header>
 
   <main class="chart-container">
@@ -39,10 +38,10 @@
   </main>
 
   <!--
-    Phase 4 plane-toggle controls (§8.2).
-    Buttons carry data-plane attributes; interaction.js wires click handlers.
-    Active class is applied by default to match the default-visible state.
-    Phase 6 will add a full legend alongside these controls.
+    Legend + controls bar.
+    Row 1 (controls): plane toggle buttons that show/hide link sets (§8.2).
+    Row 2 (legend):   static ring-depth key with coloured chips and an
+                      interaction hint.
   -->
   <div class="controls" id="plane-toggles">
     <span class="controls-label">Planes:</span>
@@ -51,8 +50,22 @@
     <button class="toggle-btn active" data-plane="shared">Containment</button>
   </div>
 
+  <div class="ring-legend" role="list" aria-label="Ring depth key">
+    <span class="controls-label" aria-hidden="true">Rings:</span>
+    <span class="legend-ring" data-ring="R1" role="listitem">Pod</span>
+    <span class="legend-arrow" aria-hidden="true">→</span>
+    <span class="legend-ring" data-ring="R3" role="listitem">Spine</span>
+    <span class="legend-arrow" aria-hidden="true">→</span>
+    <span class="legend-ring" data-ring="R4" role="listitem">Leaf</span>
+    <span class="legend-arrow" aria-hidden="true">→</span>
+    <span class="legend-ring" data-ring="R5" role="listitem">Rack</span>
+    <span class="legend-arrow" aria-hidden="true">→</span>
+    <span class="legend-ring" data-ring="R6" role="listitem">Server</span>
+    <span class="legend-hint">· Hover any arc to focus</span>
+  </div>
+
   <footer>
-    <p>Rings (inner → outer): Pod · Spine · Leaf · Rack · Server &nbsp;·&nbsp; Hover any arc to focus</p>
+    <p>Option C — standard leaf-spine datacenter pod &nbsp;·&nbsp; D3.js v7</p>
   </footer>
 
   <script type="module">

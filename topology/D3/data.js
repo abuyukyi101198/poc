@@ -256,6 +256,12 @@ export const links = [
  *   - Every R6 server must have exactly one containment parent (its rack).
  *   - Dual-leaf racks (per metadata.leaf_count === 2) must have exactly
  *     two routing_adjacency parents per plane; single-leaf racks exactly one.
+ *
+ * Phase 6 schema sanity-check (action plan §4 Phase 6 / spec §9.1):
+ *   Node fields present: id, ring, label, weight, plane, trust_tier,
+ *     failure_domain_role, metadata.  No ad-hoc fields added.
+ *   Link fields present: source, target, plane, type, weight.  No ad-hoc fields.
+ *   `_centroid` appears only on layoutNodes (computed by layout.js), not here.
  */
 export const fixtureMeta = {
   option: "C",
