@@ -89,7 +89,7 @@ export function init(rootSelector = '#topology') {
     .selectAll('circle')
     .data(Object.values(RING_BANDS))
     .join('circle')
-      .attr('r',            d => d.outerRadius)
+      .attr('r',            d => d.outerRadius + 2)
       .attr('fill',         'none')
       .attr('stroke',       '#e4deda')
       .attr('stroke-width', 0.6);
