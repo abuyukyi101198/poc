@@ -1,9 +1,10 @@
 /*
- * style.css — Phase 1 structural baseline
+ * style.css — Phase 1–4 structural baseline
  *
  * Full Canonical / Ubuntu brand treatment is applied in Phase 5.
- * This file establishes the page skeleton, font stack, and the minimal
- * arc/label rules needed for Phase 1 geometry validation.
+ * This file establishes the page skeleton, font stack, the minimal
+ * arc/label rules needed for Phase 1 geometry validation, and the
+ * plane-toggle control strip added in Phase 4.
  *
  * Ubuntu typeface loaded from Google Fonts (CDN).
  * Phase 5 will switch to self-hosted @font-face per action plan §6.2 — the
@@ -82,8 +83,16 @@ body {
 
 /* ── Arc elements ─────────────────────────────────────────────────────────── */
 .node-arc {
-  /* Hover / focus styles wired in Phase 4 interaction.js */
+  /* Smooth opacity transition for hover focus/blur (§8.3) */
   transition: opacity 0.15s ease;
+}
+
+/* ── Link paths ───────────────────────────────────────────────────────────── */
+/* Path data (d attribute) changes are instant — no CSS transition on `d`.    */
+/* Opacity is set programmatically by interaction.js; no default transition   */
+/* here to avoid conflicting with the instant path-swap on de-bundle.         */
+.link {
+  pointer-events: none;
 }
 
 /* ── Labels ───────────────────────────────────────────────────────────────── */
@@ -93,6 +102,64 @@ body {
   font-family: 'Ubuntu', -apple-system, 'Segoe UI', sans-serif;
   pointer-events: none;
   user-select: none;
+}
+
+/* ── Phase 4 — Plane toggle controls (§8.2) ──────────────────────────────── */
+.controls {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  align-items: center;
+  padding: 0 24px 28px;
+  flex-wrap: wrap;
+}
+
+.controls-label {
+  font-size: 11px;
+  color: #767676;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-right: 2px;
+}
+
+/* Flat pill button — inactive (plane is hidden) */
+.toggle-btn {
+  font-family: 'Ubuntu', -apple-system, 'Segoe UI', sans-serif;
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0.03em;
+  padding: 5px 16px;
+  border: 1px solid #c8c2bc;
+  background: #ffffff;
+  color: #767676;
+  cursor: pointer;
+  border-radius: 2px;
+  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+  /* No box-shadow, no border-radius > 2 px — Vanilla / Suru flat language */
+}
+
+.toggle-btn:hover:not(.active) {
+  border-color: #837c78;
+  color: #3d3531;
+}
+
+/* Active states — plane colours from action plan §6.1 (Canonical brand) */
+.toggle-btn.active[data-plane="data"] {
+  background: #F29879;   /* Ubuntu Orange ~60% tint — matches link colour */
+  border-color: #F29879;
+  color: #ffffff;
+}
+
+.toggle-btn.active[data-plane="mgmt"] {
+  background: #AD7F98;   /* Aubergine ~60% tint */
+  border-color: #AD7F98;
+  color: #ffffff;
+}
+
+.toggle-btn.active[data-plane="shared"] {
+  background: #908a84;   /* Warm grey — containment skeleton */
+  border-color: #908a84;
+  color: #ffffff;
 }
 
 /* ── Footer ───────────────────────────────────────────────────────────────── */

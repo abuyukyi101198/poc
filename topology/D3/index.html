@@ -27,7 +27,7 @@
       Option C &nbsp;·&nbsp; Standard Leaf-Spine Pod
       &nbsp;·&nbsp; Radial Layered Graph with Hierarchical Edge Bundling
     </p>
-    <span class="phase-badge">Phase 3 — Hierarchical Edge Bundling</span>
+    <span class="phase-badge">Phase 4 — Interaction</span>
   </header>
 
   <main class="chart-container">
@@ -38,16 +38,26 @@
     <svg id="topology" role="img" aria-label="Radial topology diagram — Option C datacenter pod"></svg>
   </main>
 
+  <!--
+    Phase 4 plane-toggle controls (§8.2).
+    Buttons carry data-plane attributes; interaction.js wires click handlers.
+    Active class is applied by default to match the default-visible state.
+    Phase 6 will add a full legend alongside these controls.
+  -->
+  <div class="controls" id="plane-toggles">
+    <span class="controls-label">Planes:</span>
+    <button class="toggle-btn active" data-plane="data">Data</button>
+    <button class="toggle-btn active" data-plane="mgmt">Management</button>
+    <button class="toggle-btn active" data-plane="shared">Containment</button>
+  </div>
+
   <footer>
-    <!--
-      Phase 4 will replace this with interactive plane-toggle controls.
-      Phase 6 will add a proper legend.
-    -->
-    <p>Rings (inner → outer): Pod · Spine · Leaf · Rack · Server</p>
+    <p>Rings (inner → outer): Pod · Spine · Leaf · Rack · Server &nbsp;·&nbsp; Hover any arc to focus</p>
   </footer>
 
   <script type="module">
     import { init, drawLinks, applyBundling } from './js/render.js';
+    import { initInteraction }                from './js/interaction.js';
 
     // Phase 1: static ring geometry
     const { root, layoutNodes, links } = init('#topology');
@@ -56,8 +66,10 @@
     drawLinks(root, layoutNodes, links);
 
     // Phase 3: replace plain paths with hierarchically-bundled paths
-    // Lower bundleStrength here if the ECMP trunk looks too compressed.
     applyBundling(root, layoutNodes, links);
+
+    // Phase 4: hover/focus behaviour + plane toggles
+    initInteraction(root, layoutNodes, links);
 
     window.__topology = { root, layoutNodes, links };
   </script>
