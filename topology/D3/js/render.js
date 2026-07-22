@@ -287,68 +287,87 @@ export function drawLinks(root, layoutNodes, links) {
   );
 }
 
-// ── Link path helper ──────────────────────────────────────────────────────────
+// ── Link path helpers ─────────────────────────────────────────────────────────
+
+/** Compact fixed-precision formatter for SVG coordinates. */
+const f = v => v.toFixed(2);
+
+/**
+ * makeTreePath(r_src, a_src, r_arc, a_arc_entry, a_arc_exit, r_tgt, a_tgt) → SVG path
+ *
+ * D3 "Tree of Life" style path with the arc floating in the inter-ring gap:
+ *
+ *   M  source point         (inner-ring outer edge at a_src)
+ *   L  arc entry point      (arc circle at a_arc_entry — stub, diagonal when bundled)
+ *   A  arc at r_arc         (from a_arc_entry to a_arc_exit — always short arc)
+ *   L  target point         (outer-ring inner edge at a_tgt)
+ *
+ * Plain paths (β=0): a_arc_entry = a_src, a_arc_exit = a_tgt
+ *   → stub is radial, arc sweeps to target column, exit is radial. No diagonals.
+ *
+ * Bundled paths (β>0): a_arc_entry = circularBlend(a_src, group_centroid_src, β)
+ *                      a_arc_exit  = a_tgt (unchanged)
+ *   → stub is a tiny diagonal in the inter-ring gap (≤18 px, barely visible).
+ *   → arc sweeps from the deflected entry to each target's actual angle.
+ *   → exit L is always radial. No diagonal artifacts into the target ring.
+ *
+ * Full-circle (pod) special case: a_src = a_tgt, a_arc_entry = a_arc_exit = a_tgt
+ *   → arc degenerates to a point → path collapses to two radial stubs (M→L→L).
+ */
+export function makeTreePath(r_src, a_src, r_arc, a_arc_entry, a_arc_exit, r_tgt, a_tgt) {
+  const x0 = r_src * Math.sin(a_src);
+  const y0 = -r_src * Math.cos(a_src);
+  const xe = r_arc * Math.sin(a_arc_entry);   // stub endpoint / arc entry
+  const ye = -r_arc * Math.cos(a_arc_entry);
+  const x1 = r_arc * Math.sin(a_arc_exit);    // arc exit
+  const y1 = -r_arc * Math.cos(a_arc_exit);
+  const x3 = r_tgt * Math.sin(a_tgt);
+  const y3 = -r_tgt * Math.cos(a_tgt);
+
+  // Shortest-arc sweep direction (1 = CW, 0 = CCW)
+  let diff = a_arc_exit - a_arc_entry;
+  while (diff >  Math.PI) diff -= TWO_PI;
+  while (diff < -Math.PI) diff += TWO_PI;
+  const sweep = diff >= 0 ? 1 : 0;
+  const ra = r_arc.toFixed(2);
+
+  if (Math.abs(diff) < 0.001) {
+    // Degenerate arc → two radial stubs (pod full-circle case)
+    return `M${f(x0)},${f(y0)} L${f(xe)},${f(ye)} L${f(x3)},${f(y3)}`;
+  }
+
+  return (
+    `M${f(x0)},${f(y0)} ` +
+    `L${f(xe)},${f(ye)} ` +
+    `A${ra},${ra} 0 0,${sweep} ${f(x1)},${f(y1)} ` +
+    `L${f(x3)},${f(y3)}`
+  );
+}
 
 /**
  * radialLinkPath(sourceNode, targetNode) → SVG path string
  *
- * Produces a cubic Bezier curve connecting the outer edge of the inner ring
- * to the inner edge of the outer ring.  Control points sit at the midpoint
- * radius between the two rings' boundaries, at each arc's midpoint angle.
- *
- * Special case — full-circle arcs (the R1 Pod node):
- *   The pod spans 0→2π, so its geometric midpoint is π (6 o'clock).
- *   Drawing all pod-originating links from the same 6 o'clock point would
- *   collapse them visually.  Instead, for full-circle arcs, the source point
- *   is placed at the TARGET's angle on the pod's outer radius — making each
- *   pod link a straight radial line at its target's angular position.
- *   (For pod→spine links the gap is only 18 px, so this barely matters;
- *   for pod→rack containment links spanning all of R3+R4 it reads clearly.)
- *
- * Implementation note — Phase 3 bundling:
- *   The control points (r_mid * sin/cos of each endpoint angle) are exactly
- *   the "attraction points" used by hierarchical edge bundling (§6.4).
- *   bundling.js will take these same control points and deflect them toward
- *   a shared trunk radius; the path signature is designed to be compatible.
+ * Plain (unbundled) tree-of-life path: radial stub to gap midpoint, arc to
+ * target angle, radial drop.  Full-circle pod degenerates to two radial stubs.
  */
 function radialLinkPath(sourceNode, targetNode) {
-  // Ensure inner/outer orientation is consistent regardless of link direction.
   const [inner, outer] = sourceNode.outerRadius <= targetNode.outerRadius
     ? [sourceNode, targetNode]
     : [targetNode, sourceNode];
 
   const a_inner = (inner.startAngle + inner.endAngle) / 2;
   const a_outer = (outer.startAngle + outer.endAngle) / 2;
+  const r_src   = inner.outerRadius;
+  const r_tgt   = outer.innerRadius;
+  const r_arc   = (r_src + r_tgt) / 2;
 
-  const r_src  = inner.outerRadius;    // link starts at outer edge of inner ring
-  const r_tgt  = outer.innerRadius;    // link ends   at inner edge of outer ring
-  const r_mid  = (r_src + r_tgt) / 2; // control-point radius
-
-  // For a full-circle arc (Pod, R1), draw from the target's angle so each
-  // link is a straight radial line rather than all converging at 6 o'clock.
   const isFullCircle = (inner.endAngle - inner.startAngle) >= TWO_PI * 0.99;
   const a_src = isFullCircle ? a_outer : a_inner;
 
-  // Cartesian coordinates — D3 polar convention: 0 = top, clockwise.
-  //   x =  r · sin(θ),   y = -r · cos(θ)
-  const x0 = r_src * Math.sin(a_src);
-  const y0 = -r_src * Math.cos(a_src);
-  const x1 = r_mid * Math.sin(a_src);   // CP1: inner-ring angle, mid radius
-  const y1 = -r_mid * Math.cos(a_src);
-  const x2 = r_mid * Math.sin(a_outer); // CP2: outer-ring angle, mid radius
-  const y2 = -r_mid * Math.cos(a_outer);
-  const x3 = r_tgt * Math.sin(a_outer);
-  const y3 = -r_tgt * Math.cos(a_outer);
-
-  return (
-    `M${x0.toFixed(2)},${y0.toFixed(2)} ` +
-    `C${x1.toFixed(2)},${y1.toFixed(2)} ` +
-    `${x2.toFixed(2)},${y2.toFixed(2)} ` +
-    `${x3.toFixed(2)},${y3.toFixed(2)}`
-  );
+  // Plain: entry = a_src (radial stub), exit = a_outer (radial exit)
+  return makeTreePath(r_src, a_src, r_arc, a_src, a_outer, r_tgt, a_outer);
 }
 
-// ── Phase 3 ───────────────────────────────────────────────────────────────────
 
 /**
  * applyBundling(root, layoutNodes, links, bundleStrength?)
