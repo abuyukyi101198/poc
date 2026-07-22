@@ -15,7 +15,7 @@
  *   - Multi-pass crossing minimisation (§5.2 step 2) — single-pass barycenter only.
  *   - Parent-group gutters beyond the rack-group gap in R6 (§5.2 step 4).
  *
- * Exports: CONFIG, RING_BANDS, RING_COLORS, computeLayout()
+ * Exports: CONFIG, RING_BANDS, RING_COLORS, PLANE_TINTS, BORDER_LEAF_FILL, computeLayout()
  */
 
 import { nodes as rawNodes, links as rawLinks } from '../data.js';
@@ -45,18 +45,27 @@ const TWO_PI      = 2 * Math.PI;
 const ARC_GUTTER  = 0.007;   // rad — between sibling arcs within a ring
 const GROUP_GUTTER = 0.028;  // rad — between rack-groups in the R6 server ring
 
-// ── Per-ring arc fill colours — Phase 5 Canonical/Ubuntu brand palette ────────
-// Warm grey tints graduated lighter toward the outer (server) ring, so the
-// arc fills recede behind the link colours (§6.1 action plan).
-// Base: Canonical warm grey #AEA9A5 (R174 G169 B165), mixed with white.
-// All tints are computed as (p × base) + ((1−p) × white), on-palette.
+// ── Per-ring arc fill colours — spec §11.1/§11.3 (dark theme, plane-tinted) ───
+// Two families:
+//   1. Neutral (containment-only) rings — R1 Pod, R5 Rack, R6 Server. Graduated
+//      dark-neutral scale, lighter toward the outer server ring.
+//   2. Plane-tinted (routing) rings — R3 Spine, R4 Leaf. Data/Management nodes
+//      are shaded toward their own plane hue at low tint over the dark base;
+//      Border Leaves (leaf_role: "border") get a third, dedicated Sage tint.
+// getNodeFill(node) in render.js resolves the correct entry — RING_COLORS is
+// the neutral-ring fallback, PLANE_TINTS/BORDER_LEAF_FILL are the R3/R4 cases.
 export const RING_COLORS = {
-  R1: '#D6CFC9',   // Pod     — ~30% tint (innermost, slightly darker = visual anchor)
-  R3: '#DEDAD4',   // Spine   — ~22%
-  R4: '#E3DDD8',   // Leaf    — ~18%
-  R5: '#E8E2DC',   // Rack    — ~14%
-  R6: '#EDE8E3',   // Server  — ~10% (lightest, outermost — maximises arc surface §3.1)
+  R1: '#2E2C2A',   // Pod     — darkest neutral, innermost visual anchor
+  R5: '#3A3835',   // Rack    — mid neutral
+  R6: '#454340',   // Server  — lightest neutral, outermost (maximises arc surface)
 };
+
+export const PLANE_TINTS = {
+  R3: { data: '#572A19', mgmt: '#4A1C39' },   // Spine — vivid Orange / Aubergine dark tint
+  R4: { data: '#6B331F', mgmt: '#5C2347' },   // Leaf  — vivid Orange / Aubergine, lighter than R3
+};
+
+export const BORDER_LEAF_FILL = '#1F4725';   // Border Leaf (leaf_role: "border") — vivid Ubuntu Sage tint
 
 // ── Rack display order ────────────────────────────────────────────────────────
 const RACK_ORDER = ['rack-1', 'rack-2', 'rack-3', 'rack-4', 'rack-5', 'rack-6'];

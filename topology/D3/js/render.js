@@ -3,14 +3,15 @@
  *
  * Phase 1: static ring geometry — arc segments, guide circles, labels.
  * Phase 2: plain radial links, plane-colour-coded.
- * Phase 5: Canonical/Ubuntu brand colours — on-palette tint values at full
- *          opacity, graduated warm grey ring fills, label colour corrections.
+ * Phase 5: Canonical/Ubuntu brand colours — dark-theme surface (spec §11.1),
+ *          plane-tinted node fills (§11.3), parallel lane-offset "cable"
+ *          link rendering (§6.6), and Border Leaf/peer-adjacency support.
  *
  * Phase 4 hover/focus and plane toggles are in interaction.js.
  */
 
 import * as d3 from 'd3';
-import { computeLayout, CONFIG, RING_BANDS, RING_COLORS } from './layout.js';
+import { computeLayout, CONFIG, RING_BANDS, RING_COLORS, PLANE_TINTS, BORDER_LEAF_FILL } from './layout.js';
 
 // Minimum arc span (degrees) at which an inline label is shown.
 // Arcs narrower than this degrade to tooltip-only (§8.4).
@@ -31,23 +32,25 @@ const RING_NAMES = {
   R6: 'Server',
 };
 
-// ── Phase 5 link colours — Canonical/Ubuntu brand palette, on-palette tints ───
+// ── Phase 5 link colours — Canonical/Ubuntu brand palette, dark theme (§6.2) ──
 //
-// Key change from Phases 2–3: colours are defined as TINT VALUES at full
-// opacity (opacity=1), NOT as arbitrary CSS opacity fades.  Using the official
-// Canonical tint percentages keeps every shade "on-palette" (action plan §6.1).
-//
-// Resting state (tinted):
-//   Ubuntu Orange #E95420 at 67% tint  →  R:240 G:141 B:106  →  #F08D6A
-//   Aubergine     #772953 at 67% tint  →  R:164 G:112 B:140  →  #A4708C
-//   Warm grey skeleton — light tint, always subdued
-//
-// Hover/focus state: full-strength base colours (applied by interaction.js §8.3)
-//   #E95420 (Ubuntu Orange full) / #772953 (Aubergine full) / #AEA9A5 (warm grey)
+// Resting states are saturated mid-tones of each brand hue — vivid enough to
+// read clearly against the dark canvas (§11.1) without competing with the
+// full-strength hover state. Colour is resolved by `plane` for routing/
+// containment links, and by `type` for the `peer_adjacency` exception
+// (§6.1a) — see linkColorKey() below.
 export const LINK_COLORS = {
-  data:   '#F08D6A',   // Ubuntu Orange at 67% tint — resting
-  mgmt:   '#A4708C',   // Aubergine at 67% tint — resting
-  shared: '#D8D1CA',   // Canonical warm grey — physical containment skeleton
+  data:           '#C1501F',   // Ubuntu Orange, vivid dark tint — resting
+  mgmt:           '#9C3D72',   // Aubergine, vivid dark tint — resting
+  shared:         '#8C8579',   // warm grey, lightened for visibility — resting
+  peer_adjacency: '#B68720',   // Ubuntu Yellow/gold, vivid dark tint — resting (§6.1a)
+};
+
+export const LINK_HOVER_COLORS = {
+  data:           '#E95420',   // Ubuntu Orange full strength
+  mgmt:           '#D98AB5',   // Aubergine, lightened further for dark-bg contrast
+  shared:         '#D8D1CA',   // warm grey, lightened
+  peer_adjacency: '#EFB73E',   // Ubuntu Yellow/gold full strength
 };
 
 // All planes at full opacity — the tint colour carries the visual weight,
@@ -56,7 +59,33 @@ export const LINK_OPACITY = {
   data:   1,
   mgmt:   1,
   shared: 1,
+  peer_adjacency: 1,
 };
+
+/**
+ * linkColorKey(d) — colour lookup key for a link datum.
+ * `peer_adjacency` links are keyed by `type`, not `plane` (spec §6.2), since
+ * they carry `plane: "shared"` for schema consistency but must render in a
+ * distinct hue from plain containment links.
+ */
+export function linkColorKey(d) {
+  return d.type === 'peer_adjacency' ? 'peer_adjacency' : (d.plane ?? 'shared');
+}
+
+/**
+ * getNodeFill(node) — resolves arc fill colour per spec §11.3.
+ *   - R4 Border Leaves (`leaf_role: "border"`) get the dedicated Sage fill,
+ *     regardless of `plane`.
+ *   - R3/R4 routing nodes otherwise get their plane-tinted fill (Data/Mgmt).
+ *   - All other rings (R1, R5, R6 — containment-only) get the flat neutral
+ *     RING_COLORS fill.
+ */
+export function getNodeFill(node) {
+  if (node.ring === 'R4' && node.leaf_role === 'border') return BORDER_LEAF_FILL;
+  const tint = PLANE_TINTS[node.ring]?.[node.plane];
+  if (tint) return tint;
+  return RING_COLORS[node.ring] ?? '#3A3835';
+}
 
 const TWO_PI = 2 * Math.PI;
 
@@ -89,7 +118,7 @@ export function init(rootSelector = '#topology') {
     .join('circle')
       .attr('r',            d => d.outerRadius + 2)
       .attr('fill',         'none')
-      .attr('stroke',       '#e4deda')
+      .attr('stroke',       'rgba(247, 247, 247, 0.08)')
       .attr('stroke-width', 0.6);
 
   // ── Arc generator ─────────────────────────────────────────────────────────────
@@ -107,11 +136,11 @@ export function init(rootSelector = '#topology') {
     .selectAll('path.node-arc')
     .data(layoutNodes)
     .join('path')
-      .attr('class',        d => `node-arc ring-${d.ring} plane-${d.plane}`)
+      .attr('class',        d => `node-arc ring-${d.ring} plane-${d.plane} leaf-role-${d.leaf_role ?? 'n-a'}`)
       .attr('id',           d => `arc-${d.id}`)
       .attr('d',            arcGen)
-      .attr('fill',         d => RING_COLORS[d.ring] ?? '#ccc')
-      .attr('stroke',       '#ffffff')
+      .attr('fill',         d => getNodeFill(d))
+      .attr('stroke',       '#151515')
       .attr('stroke-width', 1.5)
     .append('title')
       .text(d => {
@@ -135,7 +164,7 @@ export function init(rootSelector = '#topology') {
       .attr('text-anchor',        'middle')
       .attr('dominant-baseline',  'central')
       .attr('font-size',          d => arcLabelFontSize(d))
-      .attr('fill',               '#111111')    // Canonical primary text colour
+      .attr('fill',               '#F7F7F7')    // §11.1 dark-theme primary text colour
       .attr('pointer-events',     'none')
       .style('user-select',       'none')
       // Hide label if arc is too narrow (§8.4 degradation placeholder)
@@ -167,7 +196,7 @@ export function init(rootSelector = '#topology') {
       .attr('dominant-baseline', 'auto')
       .attr('font-size',         '10px')
       .attr('font-style',        'italic')
-      .attr('fill',              '#837c78')
+      .attr('fill',              '#9C948C')    // §11.1 dark-theme secondary/muted text
       .attr('pointer-events',    'none')
       .text(d => d.label);
 
@@ -179,7 +208,7 @@ export function init(rootSelector = '#topology') {
     .attr('text-anchor',       'middle')
     .attr('dominant-baseline', 'central')
     .attr('font-size',         '11px')
-    .attr('fill',              '#837c78')
+    .attr('fill',              '#9C948C')    // §11.1 dark-theme secondary/muted text
     .text('Option C');
 
   console.log(
@@ -235,8 +264,9 @@ function arcLabelFontSize(node) {
 /**
  * drawLinks(root, layoutNodes, links)
  *
- * Phase 2: draws every parent/child link in the fixture as a plain cubic
- * Bezier curve, colour-coded by plane (§6.2, Canonical brand palette).
+ * Phase 2/5: draws every parent/child link in the fixture as a tree-of-life
+ * radial/circular path, colour-coded by plane/type (§6.2) and offset into a
+ * parallel "cable" lane per plane/type where multiple links share a gap (§6.6).
  *
  * Key structural test (spec §6.5): dual-leaf racks (rack-1, rack-2, rack-3)
  * will naturally show TWO leaf→rack curves per plane — one from each leaf
@@ -244,10 +274,11 @@ function arcLabelFontSize(node) {
  * ring/link separation correctly handles the multi-parent case.
  *
  * Exclusions (spec §6.1):
- *   - border-leaf-1 (ring='SAT') is not in layoutNodes → its link is silently
- *     dropped by the has() filter below, per the Phase 1 stub decision.
- *   - Same-ring and inter-non-adjacent-ring links: none exist in the fixture,
- *     but the filter is harmless for any that might appear in later data.
+ *   - Pod→rack containment links (R1↔R5) are filtered out below — the routing
+ *     path through spine/leaf/border-leaf already expresses that containment.
+ *   - Same-ring peer-adjacency links (§6.1a) are NOT excluded — they render
+ *     via the virtual-gap branch in radialLinkPath(), though the Option C
+ *     fixture doesn't currently contain any (Option B only).
  */
 export function drawLinks(root, layoutNodes, links) {
   const nodeById = new Map(layoutNodes.map(n => [n.id, n]));
@@ -274,12 +305,13 @@ export function drawLinks(root, layoutNodes, links) {
       .attr('data-plane',  d => d.plane)
       .attr('d', d => radialLinkPath(
         nodeById.get(d.source),
-        nodeById.get(d.target)
+        nodeById.get(d.target),
+        d
       ))
       .attr('fill',         'none')
-      .attr('stroke',       d => LINK_COLORS[d.plane] ?? LINK_COLORS.shared)
+      .attr('stroke',       d => LINK_COLORS[linkColorKey(d)] ?? LINK_COLORS.shared)
       .attr('stroke-width', 1)
-      .attr('opacity',      d => LINK_OPACITY[d.plane] ?? LINK_OPACITY.shared)
+      .attr('opacity',      d => LINK_OPACITY[linkColorKey(d)] ?? LINK_OPACITY.shared)
     .append('title')
       // Native tooltip (replaced by styled panel in Phase 4)
       .text(d => `${d.source} → ${d.target}\nPlane: ${d.plane}  Type: ${d.type}`);
@@ -350,12 +382,50 @@ export function makeTreePath(r_src, a_src, r_arc, a_arc_entry, a_arc_exit, r_tgt
 }
 
 /**
- * radialLinkPath(sourceNode, targetNode) → SVG path string
- *
- * Plain (unbundled) tree-of-life path: radial stub to gap midpoint, arc to
- * target angle, radial drop.  Full-circle pod degenerates to two radial stubs.
+ * §6.6 Parallel lane offset — fixed px offset per plane/type lane so that
+ * links which would otherwise coincide (e.g. a Data leaf and its paired
+ * Management leaf serving the same rack at a near-identical angle, §5.2
+ * step 5) render as visually distinct parallel "cable" strands instead of
+ * a single overlapping stroke. Applied to the arc-segment radius only —
+ * radial entry/exit segments still terminate exactly at each node's own
+ * angular position (§6.6).
  */
-function radialLinkPath(sourceNode, targetNode) {
+const LANE_OFFSET_PX = {
+  data:           -1.5,   // innermost lane
+  mgmt:            1.5,   // outermost lane
+  shared:          0,     // centered — never coexists with data/mgmt in one gap
+  peer_adjacency:  0,     // own virtual gap; offset reserved for future multi-peer case
+};
+
+// Approximate inter-ring gap width (px) — used to place the virtual gap for
+// same-ring peer-adjacency links (§6.1a) just outside the shared ring's own
+// outer radius, mirroring the real inter-ring gap width (§11.3: 18–20 px).
+const VIRTUAL_GAP_PX = 20;
+
+/**
+ * radialLinkPath(sourceNode, targetNode, linkDatum) → SVG path string
+ *
+ * Standard (inter-ring) case: plain tree-of-life path — radial stub to gap
+ * midpoint (offset per lane, §6.6), arc to target angle, radial drop.
+ * Full-circle pod degenerates to two radial stubs.
+ *
+ * Same-ring case (§6.1a): source and target share a `ring` — there is no
+ * adjacent-ring gap to float the arc in, so the gap midpoint is placed at a
+ * small fixed radial offset just outside the shared ring's own outer radius
+ * (a "virtual ring" one gutter-width beyond the ring band), per spec §6.1a.
+ */
+function radialLinkPath(sourceNode, targetNode, linkDatum) {
+  const laneOffset = LANE_OFFSET_PX[linkColorKey(linkDatum)] ?? 0;
+
+  if (sourceNode.ring === targetNode.ring) {
+    // §6.1a — same-ring peer-adjacency exception.
+    const a_src = (sourceNode.startAngle + sourceNode.endAngle) / 2;
+    const a_tgt = (targetNode.startAngle + targetNode.endAngle) / 2;
+    const r_edge = sourceNode.outerRadius;
+    const r_virtual = r_edge + VIRTUAL_GAP_PX / 2 + laneOffset;
+    return makeTreePath(r_edge, a_src, r_virtual, a_src, a_tgt, r_edge, a_tgt);
+  }
+
   const [inner, outer] = sourceNode.outerRadius <= targetNode.outerRadius
     ? [sourceNode, targetNode]
     : [targetNode, sourceNode];
@@ -364,7 +434,7 @@ function radialLinkPath(sourceNode, targetNode) {
   const a_outer = (outer.startAngle + outer.endAngle) / 2;
   const r_src   = inner.outerRadius;
   const r_tgt   = outer.innerRadius;
-  const r_arc   = (r_src + r_tgt) / 2;
+  const r_arc   = (r_src + r_tgt) / 2 + laneOffset;
 
   const isFullCircle = (inner.endAngle - inner.startAngle) >= TWO_PI * 0.99;
   const a_src = isFullCircle ? a_outer : a_inner;

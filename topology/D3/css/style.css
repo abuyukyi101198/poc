@@ -1,8 +1,10 @@
 /*
  * style.css — Phase 5 + 6: Canonical / Ubuntu brand visual treatment
  *
- * §6.1  Colour palette  — Ubuntu Orange / Aubergine / warm grey, on-palette tints
- * §6.2  Typography      — Ubuntu typeface via Google Fonts CDN
+ * §11.1 Colour mode    — dark theme canvas/panel/text surfaces
+ * §6.2  Link palette   — Ubuntu Orange / Aubergine / warm gold, dark-muted
+ *                        resting states, full-strength brand hover states
+ * §11.2 Typography     — Ubuntu typeface via Google Fonts CDN
  * §6.3  Visual language — flat fills, no gradients, no shadows, generous white space
  * Phase 6 additions: ring-depth legend, header polish, phase badge removed.
  */
@@ -17,11 +19,11 @@
   padding: 0;
 }
 
-/* ── Page ─────────────────────────────────────────────────────────────────── */
+/* ── Page — §11.1 dark theme base surface ────────────────────────────────── */
 body {
   font-family: 'Ubuntu', -apple-system, 'Segoe UI', sans-serif;
-  background: #ffffff;       /* Canonical: white canvas (action plan §6.1) */
-  color: #111111;            /* Canonical primary text */
+  background: #151515;       /* §11.1 Canonical dark-theme base surface */
+  color: #F7F7F7;             /* §11.1 primary text */
   min-height: 100vh;
   display: flex;
   flex-direction: column;
@@ -39,7 +41,7 @@ body {
   font-size: 22px;
   font-weight: 300;           /* Ubuntu Light — Canonical title treatment */
   letter-spacing: 0.04em;
-  color: #111111;
+  color: #F7F7F7;             /* §11.1 primary text */
 }
 
 /* Thin Ubuntu Orange accent line below the title — Canonical brand motif */
@@ -55,7 +57,7 @@ body {
 .page-header .subtitle {
   font-size: 12px;
   font-weight: 400;
-  color: #767676;             /* Canonical secondary text */
+  color: #9C948C;             /* §11.1 secondary/muted text */
   margin-top: 12px;
   letter-spacing: 0.02em;
 }
@@ -119,65 +121,68 @@ body {
 .controls-label {
   font-size: 11px;
   font-weight: 500;
-  color: #767676;
+  color: #9C948C;             /* §11.1 secondary/muted text */
   letter-spacing: 0.06em;
   text-transform: uppercase;
   margin-right: 4px;
 }
 
-/* Inactive: white fill, warm grey border */
+/* Inactive: dark panel fill, muted warm grey border (§11.1 panel surface) */
 .toggle-btn {
   font-family: 'Ubuntu', -apple-system, 'Segoe UI', sans-serif;
   font-size: 11px;
   font-weight: 400;
   letter-spacing: 0.03em;
   padding: 5px 16px;
-  border: 1px solid #c8c2bc;
-  background: #ffffff;
-  color: #767676;
+  border: 1px solid #5A5650;
+  background: #1E1E1E;        /* §11.1 chart panel / card surface */
+  color: #9C948C;
   cursor: pointer;
   border-radius: 2px;
   transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
 }
 
 .toggle-btn:hover:not(.active) {
-  border-color: #837c78;
-  color: #3d3531;
+  border-color: #C9C2B8;
+  color: #F7F7F7;
 }
 
-/* Active states: tint colours matching the link resting stroke colours       */
-/* (render.js LINK_COLORS — 67% tints on white, action plan §6.1).           */
+/* Active states: full-strength brand hover colours (render.js LINK_HOVER_COLORS,   */
+/* dark-theme link palette, spec §6.2) — vivid against the dark panel surface.      */
 .toggle-btn.active[data-plane="data"] {
-  background:   #F08D6A;   /* Ubuntu Orange at 67% tint */
-  border-color: #F08D6A;
-  color: #ffffff;
+  background:   #E95420;   /* Ubuntu Orange full strength */
+  border-color: #E95420;
+  color: #151515;
 }
 
 .toggle-btn.active[data-plane="mgmt"] {
-  background:   #A4708C;   /* Aubergine at 67% tint */
-  border-color: #A4708C;
-  color: #ffffff;
+  background:   #D98AB5;   /* Aubergine, lightened for dark-bg contrast */
+  border-color: #D98AB5;
+  color: #151515;
 }
 
 .toggle-btn.active[data-plane="shared"] {
-  background:   #908a84;   /* Canonical warm grey mid */
-  border-color: #908a84;
-  color: #ffffff;
+  background:   #D8D1CA;   /* warm grey, lightened */
+  border-color: #D8D1CA;
+  color: #151515;
 }
 
 /* ── Footer ───────────────────────────────────────────────────────────────── */
 footer {
   padding: 16px 32px 24px;
   font-size: 11px;
-  color: #aaa;
+  color: #6E6864;
   text-align: center;
 }
 
 /* ── Phase 6 — Ring depth legend ─────────────────────────────────────────── */
 /*
  * Static key showing the five populated rings for Option C, innermost to
- * outermost.  Each ring has a coloured chip matching its arc fill colour
- * (RING_COLORS in layout.js).  Sits below the plane-toggle controls strip.
+ * outermost. R1/R5/R6 chips match their flat neutral RING_COLORS fill
+ * (layout.js); R3/R4 chips illustrate the Data-plane tint (PLANE_TINTS.data)
+ * since those rings actually render as a Data/Management split (spec §11.3)
+ * rather than a single flat colour — a separate Border Leaf chip covers the
+ * third R4 fill. Sits below the plane-toggle controls strip.
  */
 .ring-legend {
   display: flex;
@@ -194,7 +199,7 @@ footer {
   align-items: center;
   gap: 5px;
   font-size: 11px;
-  color: #3d3531;
+  color: #F7F7F7;
   cursor: default;
 }
 
@@ -205,20 +210,21 @@ footer {
   height: 12px;
   flex-shrink: 0;
   border-radius: 1px;
-  border: 1px solid rgba(0, 0, 0, 0.10);
+  border: 1px solid rgba(247, 247, 247, 0.14);
 }
 
-/* Chip colours — must match RING_COLORS in layout.js */
-.legend-ring[data-ring="R1"]::before { background-color: #D6CFC9; }   /* Pod */
-.legend-ring[data-ring="R3"]::before { background-color: #DEDAD4; }   /* Spine */
-.legend-ring[data-ring="R4"]::before { background-color: #E3DDD8; }   /* Leaf */
-.legend-ring[data-ring="R5"]::before { background-color: #E8E2DC; }   /* Rack */
-.legend-ring[data-ring="R6"]::before { background-color: #EDE8E3; }   /* Server */
+/* Chip colours — must match RING_COLORS / PLANE_TINTS / BORDER_LEAF_FILL in layout.js */
+.legend-ring[data-ring="R1"]::before { background-color: #2E2C2A; }   /* Pod (neutral) */
+.legend-ring[data-ring="R3"]::before { background-color: #572A19; }   /* Spine — Data tint (illustrative) */
+.legend-ring[data-ring="R4"]::before { background-color: #6B331F; }   /* Leaf — Data tint (illustrative) */
+.legend-ring[data-ring="R5"]::before { background-color: #3A3835; }   /* Rack (neutral) */
+.legend-ring[data-ring="R6"]::before { background-color: #454340; }   /* Server (neutral) */
+.legend-ring[data-ring="border"]::before { background-color: #1F4725; }   /* Border Leaf — dedicated Sage tint */
 
 /* Arrow between ring chips */
 .legend-arrow {
   font-size: 10px;
-  color: #aea9a5;
+  color: #6E6864;
   font-weight: 300;
   flex-shrink: 0;
 }
@@ -226,7 +232,7 @@ footer {
 /* Interaction hint appended at the end of the ring legend */
 .legend-hint {
   font-size: 11px;
-  color: #aea9a5;
+  color: #6E6864;
   margin-left: 6px;
   font-style: italic;
 }

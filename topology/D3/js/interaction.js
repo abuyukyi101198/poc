@@ -18,6 +18,7 @@
  */
 
 import * as d3 from 'd3';
+import { linkColorKey } from './render.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -26,18 +27,20 @@ const DIM_OPACITY = 0.07;
 /** Maps ring id → depth (0 = root/pod, 4 = server/leaf). */
 const RING_DEPTH = { R1: 0, R3: 1, R4: 2, R5: 3, R6: 4 };
 
-const RESTING_LINK_OPACITY = { data: 1, mgmt: 1, shared: 1 };
+const RESTING_LINK_OPACITY = { data: 1, mgmt: 1, shared: 1, peer_adjacency: 1 };
 
 const RESTING_LINK_STROKE = {
-  data:   '#F08D6A',
-  mgmt:   '#A4708C',
-  shared: '#D8D1CA',
+  data:           '#C1501F',
+  mgmt:           '#9C3D72',
+  shared:         '#8C8579',
+  peer_adjacency: '#B68720',
 };
 
 const HOVER_LINK_STROKE = {
-  data:   '#E95420',
-  mgmt:   '#772953',
-  shared: '#AEA9A5',
+  data:           '#E95420',
+  mgmt:           '#D98AB5',
+  shared:         '#D8D1CA',
+  peer_adjacency: '#EFB73E',
 };
 
 const RESTING_STROKE_WIDTH = 1;
@@ -82,8 +85,8 @@ function onFocus(root, hoveredNode, nodeLinksIdx, nodeById) {
     const key = `${d.source}→${d.target}`;
 
     if (lineageLinkKeys.has(key)) {
-      sel.attr('stroke',       HOVER_LINK_STROKE[d.plane]    ?? HOVER_LINK_STROKE.shared)
-         .attr('opacity',      RESTING_LINK_OPACITY[d.plane] ?? RESTING_LINK_OPACITY.shared)
+      sel.attr('stroke',       HOVER_LINK_STROKE[linkColorKey(d)]    ?? HOVER_LINK_STROKE.shared)
+         .attr('opacity',      RESTING_LINK_OPACITY[linkColorKey(d)] ?? RESTING_LINK_OPACITY.shared)
          .attr('stroke-width', HOVER_STROKE_WIDTH)
          .raise();
     } else {
@@ -99,8 +102,8 @@ function onBlur(root) {
   root.selectAll('.link').each(function(d) {
     const sel = d3.select(this);
     if (sel.attr('display') === 'none') return;
-    sel.attr('stroke',       RESTING_LINK_STROKE[d.plane]    ?? RESTING_LINK_STROKE.shared)
-       .attr('opacity',      RESTING_LINK_OPACITY[d.plane]   ?? RESTING_LINK_OPACITY.shared)
+    sel.attr('stroke',       RESTING_LINK_STROKE[linkColorKey(d)]    ?? RESTING_LINK_STROKE.shared)
+       .attr('opacity',      RESTING_LINK_OPACITY[linkColorKey(d)]   ?? RESTING_LINK_OPACITY.shared)
        .attr('stroke-width', RESTING_STROKE_WIDTH);
   });
 }
