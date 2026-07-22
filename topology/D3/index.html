@@ -27,7 +27,7 @@
       Option C &nbsp;·&nbsp; Standard Leaf-Spine Pod
       &nbsp;·&nbsp; Radial Layered Graph with Hierarchical Edge Bundling
     </p>
-    <span class="phase-badge">Phase 2 — Plain Links</span>
+    <span class="phase-badge">Phase 3 — Hierarchical Edge Bundling</span>
   </header>
 
   <main class="chart-container">
@@ -47,15 +47,18 @@
   </footer>
 
   <script type="module">
-    import { init, drawLinks } from './js/render.js';
+    import { init, drawLinks, applyBundling } from './js/render.js';
 
-    // Phase 1: ring geometry
+    // Phase 1: static ring geometry
     const { root, layoutNodes, links } = init('#topology');
 
     // Phase 2: plain (unbundled) links, plane-colour-coded
     drawLinks(root, layoutNodes, links);
 
-    // Expose for console inspection
+    // Phase 3: replace plain paths with hierarchically-bundled paths
+    // Lower bundleStrength here if the ECMP trunk looks too compressed.
+    applyBundling(root, layoutNodes, links);
+
     window.__topology = { root, layoutNodes, links };
   </script>
 
