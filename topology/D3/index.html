@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Datacenter Network Topology — Option C</title>
+  <link rel="stylesheet" href="css/style.css">
+
+  <!--
+    Import map: maps the bare specifier "d3" to D3 v7 ESM build on jsDelivr.
+    No bundler, no build step — open index.html directly in a browser or via
+    any trivial static server (e.g. `python3 -m http.server`).
+  -->
+  <script type="importmap">
+    {
+      "imports": {
+        "d3": "https://cdn.jsdelivr.net/npm/d3@7/+esm"
+      }
+    }
+  </script>
+</head>
+<body>
+
+  <header class="page-header">
+    <h1>Datacenter Network Topology</h1>
+    <p class="subtitle">
+      Option C &nbsp;·&nbsp; Standard Leaf-Spine Pod
+      &nbsp;·&nbsp; Radial Layered Graph with Hierarchical Edge Bundling
+    </p>
+    <span class="phase-badge">Phase 1 — Static Ring Geometry</span>
+  </header>
+
+  <main class="chart-container">
+    <!--
+      SVG dimensions and viewBox are set programmatically by render.js.
+      The element must exist in the DOM before the module executes.
+    -->
+    <svg id="topology" role="img" aria-label="Radial topology diagram — Option C datacenter pod"></svg>
+  </main>
+
+  <footer>
+    <!--
+      Phase 4 will replace this with interactive plane-toggle controls.
+      Phase 6 will add a proper legend.
+    -->
+    <p>Rings (inner → outer): Pod · Spine · Leaf · Rack · Server</p>
+  </footer>
+
+  <script type="module">
+    import { init } from './js/render.js';
+
+    // Kick off Phase 1 rendering.
+    // The returned object (svg, root, layoutNodes, links) is exposed on
+    // window.__topology for ad-hoc inspection in the browser console.
+    window.__topology = init('#topology');
+  </script>
+
+</body>
+</html>
+
