@@ -294,18 +294,36 @@ body {
 }
 
 /* ── Chart container ──────────────────────────────────────────────────────── */
+/* Holds both the Stack View SVG (§12, Option D only) and the Disc View SVG
+   stacked vertically as one continuous visual — no separating panel/border
+   between them, so they read as a single visualization rather than two
+   distinct sections. */
 .chart-container {
   flex: 1;
   display: flex;
+  flex-direction: column;
   justify-content: center;
   align-items: center;
   padding: 16px 32px 24px;
+  width: 100%;
+}
+
+#stackview {
+  display: block;
+  width: 100%;
+  max-width: 1200px;
+  height: auto;
+}
+
+.stack-box {
+  transition: opacity 0.1s ease;
 }
 
 #topology {
   display: block;
   /* SVG dimensions set programmatically by render.js */
 }
+
 
 /* ── Arc elements ─────────────────────────────────────────────────────────── */
 /* Smooth opacity transition on hover focus/blur (§8.3).                      */

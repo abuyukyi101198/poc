@@ -6,6 +6,9 @@
 **Scope:** Visual design and data model. Does not specify a rendering framework or implementation stack.
 **Reference basis:** Reference deployment options A–D (small deployment → large multi-pod datacenter), as established in
 prior design discussion.
+**Amendment:** §12 adds a companion large-scale visualization mode ("Stack View") for multi-pod overviews. Disc View
+(§1–§11, unchanged) remains the single-pod detail rendering; Stack View is a separate, simpler 2D projection of the
+same conceptual multi-pod structure, entered from and returning to Disc View rather than requiring a true 3D renderer.
 
 ---
 
@@ -892,5 +895,152 @@ The Ubuntu Orange brand accent used for the page-title underline and the MAAS Co
 | Link — Management (resting / hover) | `#9C3D72` / `#D98AB5`     | `#A0649A` / `#77216F`           |
 | Link — Containment (resting / hover)| `#8C8579` / `#D8D1CA`     | `#CFC9C2` / `#5E5650`           |
 | Link — Peer adjacency (resting / hover) | `#B68720` / `#EFB73E` | `#FCC87C` / `#F99B11`           |
+
+---
+
+## 12. Stack View: Multi-Pod Layered Overview
+
+### 12.1 Purpose and relationship to Disc View
+
+Disc View (§1–§11) renders one radial dendrogram per pod and is unchanged by this section. At multi-pod scale
+(Option D and beyond), placing every pod's rings on a single shared disc forces each pod into an angular slice of
+the full circle rather than giving it the full ring budget it would get alone — this is the scaling limit Disc View
+hits as pod count grows.
+
+Stack View is a companion, large-scale overview mode: it represents the datacenter as an array of pods laid out
+side by side (conceptually, a stack of discs, each viewed edge-on) and renders their combined internal structure as
+a single two-dimensional layered chart, rather than as literal 3D geometry. This keeps the "conceptually 3D" stack
+idea from prior design discussion implementable as two ordinary 2D views — Stack View (this section) for the
+multi-pod overview, and Disc View for per-pod detail — connected by the drill interaction in §12.10, instead of
+requiring an actual 3D renderer with camera/rotation controls.
+
+Stack View is a **back-to-back icicle chart** (a partition/containment layout, the same family as a flame graph),
+combined with a mirrored "population pyramid" axis split by network plane. Every rectangle's width is derived from
+the same containment rule used throughout this spec: a parent's width equals the union of its children's widths —
+no new sizing model is introduced.
+
+### 12.2 Chart axes
+
+- **x-axis — pod position.** Each pod occupies a column positioned and sized by its assigned IP address block (a
+  contiguous CIDR range) rather than by arbitrary pod label or index: a column's left edge is the block's numeric
+  start address, and its width is proportional to the block's span. Real gaps or overlaps in address planning are
+  therefore directly visible as whitespace or overlapping columns. Pod `label` remains a display attribute (used in
+  hover/tooltip, §12.11) but does not drive column position or width.
+  - **Fallback:** if a fixture has no clean per-pod IP block (or blocks are shared/non-partitioning across pods),
+    columns fall back to even ordinal spacing labelled by pod name — the same graceful-degradation posture used
+    elsewhere in this spec for optional/absent attributes (e.g. §7.7's empty `rack_controller_ids`).
+- **y-axis — hierarchy depth, mirrored by plane around a y = 0 baseline.** Unlike Disc View's inner→outer radius
+  mapping, Stack View splits the routing tiers into two vertical arms extending away from a shared baseline: an
+  upward (+y) arm and a downward (−y) arm, assigned by network plane per §12.3. This is the "population pyramid"
+  half of the chart's construction.
+
+### 12.3 Layer order and plane mirroring
+
+Reading outward from the baseline, the layer sequence matches the existing ring depth order (§3.1) exactly — R1 →
+R2 → R3 → R4 → R5 — the only change is that the plane-specific tiers (R2–R4) are drawn as a mirrored pair, one per
+arm, while the non-plane-specific tiers (R1, R5) remain single, unified bands spanning both arms:
+
+| Layer position                     | Ring | Arm assignment                          |
+|-------------------------------------|------|-------------------------------------------|
+| y = 0 (baseline, unified)            | R1 Pod            | Spans both arms — see §12.4          |
+| +y, innermost of the arm             | R2 Superspine (mgmt) | Management plane only               |
+| +y, middle                          | R3 Spine (mgmt)      | Management plane only               |
+| +y, outermost routing layer          | R4 Leaf (mgmt)       | Management plane only               |
+| −y, innermost of the arm             | R2 Superspine (data) | Data plane only                     |
+| −y, middle                          | R3 Spine (data)      | Data plane only                     |
+| −y, outermost routing layer          | R4 Leaf (data)       | Data plane only                     |
+| Outer cap (both arms terminate here) | R5 Rack           | Spans both arms — see §12.6          |
+| Not rendered                         | R6 Server          | Omitted — see §12.7                  |
+
+**+y = Management, −y = Data** is the canonical assignment for this section, superseding any earlier informal
+sketch discussed before this was formalized. Rings absent from the active option (per §3.3) are simply omitted from
+the corresponding arm, exactly as empty rings are omitted in Disc View (§3.2).
+
+### 12.4 Pod band (inner unifying layer)
+
+- Rendered as a single band straddling y = 0, its height split evenly above and below the baseline. This mirrored
+  rendering is a pure visual device: R1 Pod is not plane-specific (§4.3), so it is drawn as a symmetric pair of
+  half-height rectangles rather than assigned to one arm, giving the chart a closed, symmetric inner boundary.
+- Column position/width per pod follows §12.2 (IP block span). Fill reuses the existing neutral R1 Pod fill (§11.3)
+  unchanged.
+
+### 12.5 Superspine / Spine / Leaf bands (plane-split layers)
+
+- R2, R3, and R4 each render as two mirrored bands per pod — one in the +y (Management) arm, one in the −y (Data)
+  arm — at the same relative distance from the baseline as their ring depth order.
+- Band width follows the standard containment rule (§12.1): a parent band's width equals the union of the x-extents
+  of its children in the next-outward band. This is what produces cross-pod spanning for Superspine automatically:
+  when a super-spine's spine-children come from more than one pod's column, its band's width extends across those
+  columns with no special-case logic, the same emergent behavior noted for containment layouts generally.
+- Fill reuses the existing plane-tinted colors from §11.3 (Ubuntu Orange tints for Data, Aubergine tints for
+  Management) unchanged — the ±y mirror axis is a new spatial arrangement of the existing plane-color encoding, not
+  a new palette.
+- Border Leaf (`leaf_role: "border"`) renders within the Data-arm Leaf band (its `plane` is `"data"` in the
+  reference schema, §9.1), using its existing dedicated Sage fill (§11.3), unchanged from Disc View.
+- `plane: "shared"` nodes (TOR, Options A/B, §4.3) do not split into a mirrored pair. Consistent with the existing
+  Data-tint fallback rule (§4.3), a shared-plane tier renders as a single band. See §12.9 for how this reshapes the
+  chart for Options A/B specifically.
+
+### 12.6 Rack band (outer unifying layer)
+
+- Like Pod, Rack is not plane-specific (§4.3; §11.3's neutral fill family) and terminates both arms as a second
+  unifying layer — the chart is therefore symmetric and closed at both its inner (Pod) and outer (Rack) boundary,
+  with the plane-split arms sandwiched in between.
+- Each rack's total height is proportional to its weight (deduplicated server count, §5.2, `weight_mode` in §9.2) —
+  the same sizing metric Disc View uses; no new metric is introduced.
+- Because a rack is fed by both a Management leaf (+y arm) and a Data leaf (−y arm) simultaneously, its rectangle
+  is split into two half-height segments — one appended above (continuing the +y arm), one appended below
+  (continuing the −y arm) — sized as close to a 50/50 split of the rack's total weight as pixel rounding allows
+  ("as evenly as possible"). This extends the Pod band's mirrored-pair rendering (§12.4) to a non-trivial,
+  weight-driven split rather than an automatically equal one.
+- **AZ grouping and coloring:** racks sharing a leaf are ordered along x so that racks with the same
+  `availability_zone` (§7.8) remain contiguous — the same "pre-group siblings before drawing" principle already
+  used for gutter spacing in Disc View (§5.2 step 4), applied here to AZ instead of plane. Each rack's two
+  half-segments are filled using the AZ accent palette (§7.8) instead of the neutral Rack fill whenever
+  `availability_zone !== "n/a"`, exactly as in Disc View — both halves of a given rack always use the same AZ
+  color, so the pair reads as one entity split across the mirror line rather than two unrelated rectangles.
+- Where balancing an AZ group's weight evenly across the two arms would break a *different* AZ group's contiguity,
+  contiguity wins: "as evenly as possible" is bounded by the AZ-grouping constraint in §7.8, not a strict numeric
+  optimum.
+
+### 12.7 Server tier omitted
+
+R6 Server nodes are not rendered in Stack View at any zoom level. Per-server detail — including the R6 AZ override
+case (§7.8) — is only available by drilling into Disc View for a specific pod (§12.10). Stack View is strictly a
+multi-pod overview; Disc View remains the sole detail renderer.
+
+### 12.8 No explicit link/edge rendering
+
+Unlike Disc View (§6), Stack View draws no link/edge lines at all. Every parent-child relationship is implied
+purely by containment/width nesting (§12.5's width-union rule) — this is the structural reason Stack View avoids
+the visually-imposing, line-heavy quality of a line-based schedule diagram: nothing in the chart is a drawn path,
+only nested filled rectangles.
+
+Same-ring peer-adjacency links (§6.1a, e.g. ToR-to-ToR), OOB links (§7.1), and forbidden-adjacency glyphs (§7.6)
+are Disc-View-only concepts; Stack View has no rendering for them. This is a deliberate scope reduction — those
+relationships remain visible once a user drills into Disc View for the relevant pod (§12.10).
+
+### 12.9 Per-option shape (extends §3.3)
+
+| Option | Stack View shape |
+|---|---|
+| **A** (very small) | No Pod ring and no plane split exist at this scale (§3.3). R4 TOR takes the Pod's role as the single, central, mirrored unifying band (still Data-tint per the §4.3 fallback, but positioned at the baseline rather than split into arms); R5 Rack caps both arms as usual. No Superspine/Spine/Leaf arms are drawn. |
+| **B** (small resilient) | Same shape as Option A — TOR (both units) forms the central mirrored band, Rack caps both arms. The TOR-to-TOR peer-adjacency link is omitted per §12.8 (visible only in Disc View). |
+| **C** (leaf-spine pod) | Pod at baseline; +y arm = Spine(mgmt) → Leaf(mgmt); −y arm = Spine(data) → Leaf(data); Rack caps both arms. No Superspine layer, since R2 is absent for Option C (§3.3). |
+| **D** (multi-pod) | Full shape as described in §12.3: Pod at baseline; +y arm = Superspine(mgmt) → Spine(mgmt) → Leaf(mgmt); −y arm = Superspine(data) → Spine(data) → Leaf(data); Rack caps both arms. |
+
+### 12.10 Interaction: selecting a pod
+
+Clicking anywhere within a given pod's column (either arm, or its Rack-cap half-segments) transitions to Disc View
+filtered to that pod, reusing the existing drill/filter behavior of §8.5. The transition is a crossfade/zoom rather
+than a literal 3D rotation, consistent with using two 2D views instead of a true 3D renderer (§12.1).
+
+### 12.11 Hover and tooltip reuse
+
+Hovering any band segment in Stack View reuses the existing tooltip panel content model (§8.6) unchanged — the
+same per-node sections (MAAS Control Plane, Availability Zone, categorization footer, metadata) apply, since the
+underlying node schema (§9.1) is identical between the two views; only the geometry differs. Lineage-highlight
+hover behavior (§8.3) is not part of Stack View's initial scope, since containment is already expressed spatially
+through nesting rather than through links that need highlighting.
 
 

@@ -53,6 +53,7 @@
   </nav>
 
   <main class="chart-container">
+    <svg id="stackview" role="img" aria-label="Multi-pod stack view diagram" style="display:none;"></svg>
     <svg id="topology" role="img" aria-label="Radial topology diagram"></svg>
   </main>
 
@@ -89,6 +90,7 @@
     import { initInteraction } from './js/interaction.js';
     import { initTooltip } from './js/tooltip.js';
     import { initThemeToggle } from './js/theme.js';
+    import { renderStackView } from './js/stackview.js';
 
     // §11.6 theme toggle — applied independently of chart rendering
     initThemeToggle('#theme-toggle');
@@ -145,6 +147,15 @@
       const hasPeerAdj = links.some(l => l.type === 'peer_adjacency');
       const peerBtn = document.getElementById('toggle-peer');
       if (peerBtn) peerBtn.style.display = hasPeerAdj ? '' : 'none';
+
+      // Stack View (§12) — multi-pod overview, Option D only
+      const stackSvg = document.getElementById('stackview');
+      if (option === 'D') {
+        stackSvg.style.display = '';
+        renderStackView('#stackview', nodes, links, meta);
+      } else {
+        stackSvg.style.display = 'none';
+      }
 
       activeOption = option;
       window.__topology = { root, layoutNodes, links: resolvedLinks };
