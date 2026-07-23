@@ -129,6 +129,12 @@ function buildHeader(d) {
 }
 
 function buildMetaRow(d) {
+  // Stack View nodes (§12.11) carry no startAngle/endAngle — this tooltip
+  // module is shared verbatim between both views (§8.6), so degrade to a
+  // weight-only line rather than showing a bogus arc span for a box chart.
+  if (d.startAngle == null || d.endAngle == null) {
+    return `<div class="tooltip-meta">Weight: ${d.weight}</div>`;
+  }
   const spanDeg = ((d.endAngle - d.startAngle) * 180 / Math.PI).toFixed(1);
   return `<div class="tooltip-meta">Weight: ${d.weight} &nbsp;·&nbsp; Arc span: ${spanDeg}°</div>`;
 }

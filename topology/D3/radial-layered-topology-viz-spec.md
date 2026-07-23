@@ -1039,8 +1039,17 @@ than a literal 3D rotation, consistent with using two 2D views instead of a true
 
 Hovering any band segment in Stack View reuses the existing tooltip panel content model (§8.6) unchanged — the
 same per-node sections (MAAS Control Plane, Availability Zone, categorization footer, metadata) apply, since the
-underlying node schema (§9.1) is identical between the two views; only the geometry differs. Lineage-highlight
-hover behavior (§8.3) is not part of Stack View's initial scope, since containment is already expressed spatially
-through nesting rather than through links that need highlighting.
+underlying node schema (§9.1) is identical between the two views; only the geometry differs.
+
+**Lineage-highlight hover behavior (§8.3) is also implemented**, reusing the Disc View's own ancestor-BFS logic
+unchanged (traversal only, not the plane-toggle wiring, which stays bound to Disc View's root — see
+implementation note below). This supersedes an earlier draft of this section, which described lineage-highlight
+as out of scope for Stack View; in practice it remains valuable here too, since a hovered rack's leaf → spine →
+super-spine → pod ancestry is genuinely useful to trace even though those relationships are also visible via
+spatial nesting.
+
+**Implementation status:** tooltip reuse and lineage-highlight hover (this section) are implemented, sharing
+`interaction.js`/`tooltip.js` verbatim with Disc View. §12.10's click-to-drill-into-Disc-View transition is **not**
+yet implemented — clicking a Stack View segment currently has no effect beyond the hover states described above.
 
 

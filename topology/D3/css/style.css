@@ -168,7 +168,8 @@ body {
   font-family: 'Ubuntu', -apple-system, 'Segoe UI', sans-serif;
   background: var(--canvas-bg);
   color: var(--text-primary);
-  min-height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -178,9 +179,11 @@ body {
 /* ── Page header ──────────────────────────────────────────────────────────── */
 .page-header {
   position: relative;
-  padding: 40px 32px 16px;
+  padding: 24px 32px 16px;
+  margin-top: 32px;
   text-align: center;
   width: 100%;
+  flex-shrink: 0;
 }
 
 .page-header h1 {
@@ -214,7 +217,7 @@ body {
    switch — square, ≤2px border radius, no drop shadow. */
 .theme-toggle-btn {
   position: absolute;
-  top: 40px;
+  top: 24px;
   right: 32px;
   display: inline-flex;
   align-items: center;
@@ -248,8 +251,10 @@ body {
   display: flex;
   justify-content: center;
   gap: 4px;
-  padding: 0 32px 20px;
+  padding: 0 32px 16px;
+  margin-top: 16px;
   flex-wrap: wrap;
+  flex-shrink: 0;
 }
 
 .option-tab {
@@ -294,29 +299,161 @@ body {
 }
 
 /* ── Chart container ──────────────────────────────────────────────────────── */
-/* Holds both the Stack View SVG (§12, Option D only) and the Disc View SVG
-   stacked vertically as one continuous visual — no separating panel/border
-   between them, so they read as a single visualization rather than two
-   distinct sections. */
+/* Flex column holding the stack strip (#stackview, shown only for Option D)
+   and the disc wrapper below it. The stack is hidden (display:none) for
+   single-pod options so the disc gets the full available vertical space. */
 .chart-container {
   flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  justify-content: center;
   align-items: center;
-  padding: 16px 32px 24px;
   width: 100%;
+  padding: 0;
 }
 
+/* Stack strip — shown only for multi-pod options (Option D); hidden via
+   display:none for single-pod options so no vertical space is reserved.
+   Height (90px ≈ stackview.js HEIGHT × 0.75) matches the rendered size at
+   max-width 705px (= 940px canvas × 0.75). Width is 75% of the disc canvas. */
 #stackview {
   display: block;
+  flex-shrink: 0;
+  height: 90px;
   width: 100%;
-  max-width: 1200px;
-  height: auto;
+  max-width: 705px;
 }
 
 .stack-box {
-  transition: opacity 0.1s ease;
+  transition: opacity 0.15s ease;
+}
+
+/* Disc wrapper — remaining space below the stack strip. */
+.disc-wrapper {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  width: 100%;
+  padding: 12px 48px 16px;
+}
+
+#topology {
+  display: block;
+  /* render.js sets width="940" height="940" viewBox="0 0 940 940".
+     max constraints + viewBox = scales to fit without distortion. */
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+}
+
+/* ── §12 Stack View pod-column summary tooltip ───────────────────────────── */
+/* Separate from the per-node §8.6 tooltip-panel — this shows pod-level
+   aggregate stats on column hover, not individual node detail. */
+.stack-tooltip-panel {
+  position: fixed;
+  z-index: 1001;
+  padding: 9px 11px;
+  background: var(--panel-bg);
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+  font-family: 'Ubuntu', -apple-system, 'Segoe UI', sans-serif;
+  font-size: 11px;
+  color: var(--text-primary);
+  pointer-events: none;
+  min-width: 180px;
+  max-width: 240px;
+}
+
+.stk-header {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-bottom: 3px;
+}
+
+.stk-label {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.stk-cidr {
+  font-family: 'Ubuntu Mono', 'Courier New', monospace;
+  font-size: 10px;
+  color: var(--text-secondary);
+}
+
+.stk-counts {
+  font-size: 10px;
+  color: var(--text-secondary);
+  margin-bottom: 1px;
+}
+
+.stk-divider {
+  height: 1px;
+  margin: 6px 0;
+  background: var(--divider-subtle);
+}
+
+.stk-plane-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 10.5px;
+}
+
+.stk-plane-table td {
+  padding: 1px 4px 1px 0;
+  vertical-align: middle;
+}
+
+.stk-plane-chip {
+  display: inline-block;
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  padding: 1px 5px;
+  border-radius: 2px;
+  white-space: nowrap;
+  color: #F7F7F7;
+}
+
+.stk-plane-data { background: var(--link-data); }
+.stk-plane-mgmt { background: var(--link-mgmt); }
+
+.stk-az-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.stk-az-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10.5px;
+}
+
+.stk-az-swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 1px;
+  flex-shrink: 0;
+}
+
+.stk-az-name {
+  flex: 1;
+  font-family: 'Ubuntu Mono', 'Courier New', monospace;
+  font-size: 10px;
+}
+
+.stk-az-count {
+  color: var(--text-secondary);
+  font-size: 10px;
 }
 
 #topology {
@@ -363,8 +500,9 @@ body {
   gap: 10px;
   justify-content: center;
   align-items: center;
-  padding: 0 32px 32px;
+  padding: 0 32px 14px;
   flex-wrap: wrap;
+  flex-shrink: 0;
 }
 
 .controls-label {
@@ -424,10 +562,12 @@ body {
 
 /* ── Footer ───────────────────────────────────────────────────────────────── */
 footer {
-  padding: 16px 32px 24px;
+  padding: 10px 32px 14px;
+  margin-bottom: 32px;
   font-size: 11px;
   color: var(--footer-text);
   text-align: center;
+  flex-shrink: 0;
 }
 
 /* ── Phase 6 — Ring depth legend ─────────────────────────────────────────── */
@@ -445,7 +585,9 @@ footer {
   gap: 8px;
   justify-content: center;
   flex-wrap: wrap;
-  padding: 0 32px 32px;
+  padding: 0 32px 14px;
+  margin-bottom: 12px;
+  flex-shrink: 0;
 }
 
 /* Individual ring chip + label */

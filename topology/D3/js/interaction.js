@@ -18,7 +18,12 @@
  * so RING_DEPTH[R2] is never evaluated.  It must be present here so that BFS
  * correctly treats super-spines as ancestors of spines (not the reverse).
  *
- * Exports: initInteraction(root, layoutNodes, links)
+ * Exports:
+ *   initInteraction(root, layoutNodes, links)   — Disc View entry point:
+ *     lineage hover + the page-global plane-toggle buttons.
+ *   initLineageHover(root, layoutNodes, links)  — lineage hover only, no
+ *     toggle wiring. Used directly by Stack View (§12.11, stackview.js) so
+ *     a second call doesn't hijack Disc View's plane-toggle listeners.
  */
 
 import * as d3 from 'd3';
@@ -45,19 +50,9 @@ const HOVER_STROKE_WIDTH   = 1.5;
 // ── Public API ────────────────────────────────────────────────────────────────
 
 export function initInteraction(root, layoutNodes, links) {
-  const nodeById = new Map(layoutNodes.map(n => [n.id, n]));
-
-  // Build node→link-key index, omitting pod→rack containment links (not drawn)
-  const nodeLinksIdx = buildNodeLinksIndex(layoutNodes, links, nodeById);
+  const cleanupLineage = initLineageHover(root, layoutNodes, links);
 
   const visible = { data: true, mgmt: true, shared: true, peer_adjacency: true };
-
-  root.selectAll('.node-arc')
-    .style('cursor', 'pointer')
-    .on('mouseenter.lineage', (event, d) =>
-      onFocus(root, d, nodeLinksIdx, nodeById))
-    .on('mouseleave.lineage', () => onBlur(root));
-
   const teardown = wireToggles(root, visible);
 
   console.log('[topology] Phase 4 interaction initialised — lineage hover + plane toggles active');
@@ -65,8 +60,37 @@ export function initInteraction(root, layoutNodes, links) {
   // Return a cleanup function for option switching — removes event listeners
   // and plane-toggle handlers so they don't accumulate across re-renders.
   return function cleanup() {
-    root.selectAll('.node-arc').on('mouseenter.lineage', null).on('mouseleave.lineage', null);
+    cleanupLineage();
     if (teardown) teardown();
+  };
+}
+
+/**
+ * initLineageHover(root, layoutNodes, links) — §8.3 hover/focus lineage
+ * highlighting only, WITHOUT the global plane-toggle wiring. This is what
+ * initInteraction() uses internally for the Disc View, and it's also what
+ * Stack View (§12.11) calls directly on its own <g> root — calling the full
+ * initInteraction() a second time would re-register the page-global
+ * `.toggle-btn` click handler against the wrong root and silently break
+ * Disc View's plane toggles, so Stack View must use this lighter entry
+ * point instead.
+ *
+ * Returns a cleanup function that removes just the lineage listeners.
+ */
+export function initLineageHover(root, layoutNodes, links) {
+  const nodeById = new Map(layoutNodes.map(n => [n.id, n]));
+
+  // Build node→link-key index, omitting pod→rack containment links (not drawn)
+  const nodeLinksIdx = buildNodeLinksIndex(layoutNodes, links, nodeById);
+
+  root.selectAll('.node-arc')
+    .style('cursor', 'pointer')
+    .on('mouseenter.lineage', (event, d) =>
+      onFocus(root, d, nodeLinksIdx, nodeById))
+    .on('mouseleave.lineage', () => onBlur(root));
+
+  return function cleanup() {
+    root.selectAll('.node-arc').on('mouseenter.lineage', null).on('mouseleave.lineage', null);
   };
 }
 

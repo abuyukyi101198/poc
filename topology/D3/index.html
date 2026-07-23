@@ -53,8 +53,10 @@
   </nav>
 
   <main class="chart-container">
-    <svg id="stackview" role="img" aria-label="Multi-pod stack view diagram" style="display:none;"></svg>
-    <svg id="topology" role="img" aria-label="Radial topology diagram"></svg>
+    <svg id="stackview" role="img" aria-label="Multi-pod stack view diagram"></svg>
+    <div class="disc-wrapper">
+      <svg id="topology" role="img" aria-label="Radial topology diagram"></svg>
+    </div>
   </main>
 
   <div class="controls" id="plane-toggles">
@@ -112,53 +114,122 @@
     let activeOption = 'C';
     let cleanupInteraction = null;
 
-    async function renderOption(option) {
-      const fixture = await import(FIXTURE_PATHS[option]);
-      const { nodes, links, meta = {} } = fixture;
+    // §12.10 Stack View drill selection — which pod (if any) Disc View is
+    // currently filtered to. null = show every pod (default, full fixture).
+    // Reset to null whenever the active option changes.
+    let selectedPodId = null;
+
+    /**
+     * filterToPod(nodes, links, podId) — §12.10/§8.5 drill/filter.
+     * Returns the full arrays unchanged when podId is null. Otherwise keeps
+     * only the selected pod's own subtree (R1/R3/R4/R5/R6 nodes carrying
+     * metadata.pod === podId, or the pod node itself) PLUS every R2
+     * Superspine node (shared infrastructure, §12.5) so the filtered Disc
+     * View still shows a complete, correctly-rooted single-pod topology
+     * rather than an orphaned fragment. Links are kept only when both
+     * endpoints survive the node filter, which naturally drops every
+     * cross-pod link with no special-case code.
+     */
+    function filterToPod(nodes, links, podId) {
+      if (!podId) return { nodes, links };
+      const keepIds = new Set(
+        nodes
+          .filter(n => n.ring === 'R2' || n.id === podId || n.metadata?.pod === podId)
+          .map(n => n.id)
+      );
+      return {
+        nodes: nodes.filter(n => keepIds.has(n.id)),
+        links: links.filter(l => keepIds.has(l.source) && keepIds.has(l.target)),
+      };
+    }
+
+    /**
+     * renderDiscView(nodes, links, meta, selectedPodId) — everything that
+     * used to be inline in renderOption() for the Disc View half of the
+     * page. Factored out so a Stack View pod click (§12.10) can re-render
+     * just the Disc View, filtered, without re-fetching the fixture module
+     * or re-rendering the Stack View's own layout from scratch.
+     */
+    function renderDiscView(nodes, links, meta, selectedPodId) {
       const ringNames = { ...DEFAULT_RING_NAMES, ...(meta.ringNames ?? {}) };
 
-      // Tear down previous render
       if (cleanupInteraction) { cleanupInteraction(); cleanupInteraction = null; }
-      // Remove old tooltip panel so it doesn't linger
       document.getElementById('tooltip-panel')?.remove();
-      // Clear SVG
+      document.getElementById('stack-tooltip-panel')?.remove();
       svg.innerHTML = '';
 
-      // Render chart
       const { root, layoutNodes, links: resolvedLinks, populatedRings } =
         init('#topology', nodes, links, meta);
       drawLinks(root, layoutNodes, resolvedLinks);
       cleanupInteraction = initInteraction(root, layoutNodes, resolvedLinks);
       initTooltip(root, layoutNodes, meta.ringNames ?? {});
 
-      // Update page header
-      document.getElementById('page-subtitle').textContent =
-        meta.subtitle ?? `Option ${option}`;
-      document.title = `Datacenter Topology — ${meta.label ?? `Option ${option}`}`;
-      svg.setAttribute('aria-label', `Radial topology diagram — ${meta.label ?? `Option ${option}`}`);
+      // Page header — append the drilled-in pod's id when a selection is active
+      const baseSubtitle = meta.subtitle ?? `Option ${meta.option ?? ''}`;
+      document.getElementById('page-subtitle').textContent = selectedPodId
+        ? `${baseSubtitle} · Detail: ${selectedPodId}`
+        : baseSubtitle;
+      document.title = `Datacenter Topology — ${meta.label ?? `Option ${meta.option ?? ''}`}`;
+      svg.setAttribute('aria-label', `Radial topology diagram — ${meta.label ?? ''}${selectedPodId ? ` (${selectedPodId})` : ''}`);
 
-      // Update legend chips and labels to match populated rings
       updateLegend(populatedRings, ringNames, meta);
-
-      // Update plane toggles to active (reset on option switch)
       document.querySelectorAll('.toggle-btn').forEach(b => b.classList.add('active'));
 
-      // Show Peer Adjacency toggle only when the fixture contains such links
       const hasPeerAdj = links.some(l => l.type === 'peer_adjacency');
       const peerBtn = document.getElementById('toggle-peer');
       if (peerBtn) peerBtn.style.display = hasPeerAdj ? '' : 'none';
 
-      // Stack View (§12) — multi-pod overview, Option D only
+      window.__topology = { root, layoutNodes, links: resolvedLinks };
+    }
+
+    /**
+     * renderStackAndWire(nodes, links, meta) — renders Stack View with the
+     * current selection state, and wires its onSelectPod callback (§12.10):
+     * clicking a pod's column filters Disc View to that pod (toggling back
+     * to "show all" on a second click of the same pod), then re-renders
+     * Stack View itself so the persistent selected-pod outline stays in
+     * sync (§12.10 "selected disc highlighting").
+     */
+    function renderStackAndWire(nodes, links, meta) {
+      renderStackView('#stackview', nodes, links, meta, {
+        selectedPodId,
+        onSelectPod: (podId) => {
+          if (podId === selectedPodId) return;   // already selected — no-op, deselection not permitted
+          selectedPodId = podId;
+          const filtered = filterToPod(nodes, links, selectedPodId);
+          renderDiscView(filtered.nodes, filtered.links, meta, selectedPodId);
+          renderStackAndWire(nodes, links, meta);
+        },
+      });
+    }
+
+    async function renderOption(option) {
+      const fixture = await import(FIXTURE_PATHS[option]);
+      const { nodes, links, meta = {} } = fixture;
+
+      selectedPodId = null;
+
       const stackSvg = document.getElementById('stackview');
       if (option === 'D') {
-        stackSvg.style.display = '';
-        renderStackView('#stackview', nodes, links, meta);
+        stackSvg.style.display = '';   // restore — multi-pod stack view is used
+        // Auto-select the first pod (by IP/CIDR order). Deselection not permitted.
+        const firstPod = nodes
+          .filter(n => n.ring === 'R1' && n.metadata?.cidr)
+          .sort((a, b) => a.metadata.cidr.localeCompare(b.metadata.cidr))[0];
+        selectedPodId = firstPod?.id ?? null;
+
+        const filtered = filterToPod(nodes, links, selectedPodId);
+        renderDiscView(filtered.nodes, filtered.links, meta, selectedPodId);
+        renderStackAndWire(nodes, links, meta);
       } else {
+        // Single-pod option — collapse the stack strip entirely so the disc
+        // view gets the full available vertical space.
+        stackSvg.innerHTML = '';
         stackSvg.style.display = 'none';
+        renderDiscView(nodes, links, meta, null);
       }
 
       activeOption = option;
-      window.__topology = { root, layoutNodes, links: resolvedLinks };
     }
 
     function updateLegend(populatedRings, ringNames, meta) {
