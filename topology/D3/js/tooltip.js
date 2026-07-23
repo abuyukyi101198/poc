@@ -142,7 +142,7 @@ function buildControlPlaneSection(d) {
 /** §7.8 — Availability Zone section, AZ-accent-colored, only if populated. */
 function buildAZSection(d, rackAzById) {
   if (!d.availability_zone || d.availability_zone === 'n/a') return null;
-  const azColor = getAZColor(d.availability_zone) ?? '#9C948C';
+  const azColor = getAZColor(d.availability_zone) ?? 'var(--text-secondary)';
 
   let azLine = escapeHtml(d.availability_zone);
   if (d.ring === 'R6' && d.metadata?.rack) {

@@ -15,8 +15,15 @@
  *   - Multi-pass crossing minimisation (§5.2 step 2) — single-pass barycenter only.
  *   - Parent-group gutters beyond the rack-group gap in R6 (§5.2 step 4).
  *
+ * Theming (§11.1/§11.6): all colour constants below resolve to CSS custom
+ * property references (`var(--…)`) rather than literal hex values. The actual
+ * hex values live in style.css, keyed under `:root`/`[data-theme="dark"]` and
+ * `[data-theme="light"]` — so a single `data-theme` attribute swap on <html>
+ * (see theme.js) re-colours every arc/link without any JS re-render, since
+ * `var()` references resolve live against the cascade.
+ *
  * Exports: CONFIG, RING_BANDS, RING_COLORS, PLANE_TINTS, BORDER_LEAF_FILL,
- *          AZ_PALETTE, getAZColor(), computeLayout()
+ *          AZ_COLOR_COUNT, getAZColor(), computeLayout()
  */
 
 import { nodes as rawNodes, links as rawLinks } from '../data.js';
@@ -46,45 +53,46 @@ const TWO_PI      = 2 * Math.PI;
 const ARC_GUTTER  = 0.007;   // rad — between sibling arcs within a ring
 const GROUP_GUTTER = 0.028;  // rad — between rack-groups in the R6 server ring
 
-// ── Per-ring arc fill colours — spec §11.1/§11.3 (dark theme, plane-tinted) ───
+// ── Per-ring arc fill colours — spec §11.1/§11.3, theme-aware (§11.6) ─────────
 // Two families:
 //   1. Neutral (containment-only) rings — R1 Pod, R5 Rack, R6 Server. Graduated
-//      dark-neutral scale, lighter toward the outer server ring.
+//      neutral scale (dark theme: darker→lighter outward; light theme: same
+//      graduation, recovered/adapted from the pre-dark-theme Phase 1–4 palette).
 //   2. Plane-tinted (routing) rings — R3 Spine, R4 Leaf. Data/Management nodes
-//      are shaded toward their own plane hue at low tint over the dark base;
-//      Border Leaves (leaf_role: "border") get a third, dedicated Sage tint.
+//      are shaded toward their own plane hue; Border Leaves (leaf_role: "border")
+//      get a third, dedicated Sage tint.
 // getNodeFill(node) in render.js resolves the correct entry — RING_COLORS is
 // the neutral-ring fallback, PLANE_TINTS/BORDER_LEAF_FILL are the R3/R4 cases.
+// Every value here is a CSS var() reference — see style.css for the actual
+// per-theme hex values.
 export const RING_COLORS = {
-  R1: '#2E2C2A',   // Pod     — darkest neutral, innermost visual anchor
-  R5: '#3A3835',   // Rack    — mid neutral
-  R6: '#454340',   // Server  — lightest neutral, outermost (maximises arc surface)
+  R1: 'var(--ring-r1)',   // Pod     — innermost visual anchor
+  R5: 'var(--ring-r5)',   // Rack    — mid neutral
+  R6: 'var(--ring-r6)',   // Server  — outermost (maximises arc surface)
 };
 
 export const PLANE_TINTS = {
-  R3: { data: '#572A19', mgmt: '#4A1C39' },   // Spine — vivid Orange / Aubergine dark tint
-  R4: { data: '#6B331F', mgmt: '#5C2347' },   // Leaf  — vivid Orange / Aubergine, lighter than R3
+  R3: { data: 'var(--plane-r3-data)', mgmt: 'var(--plane-r3-mgmt)' },   // Spine
+  R4: { data: 'var(--plane-r4-data)', mgmt: 'var(--plane-r4-mgmt)' },   // Leaf
 };
 
-export const BORDER_LEAF_FILL = '#1F4725';   // Border Leaf (leaf_role: "border") — vivid Ubuntu Sage tint
+export const BORDER_LEAF_FILL = 'var(--border-leaf-fill)';   // Border Leaf (leaf_role: "border")
 
-// ── Availability Zone accent palette — spec §7.8 ──────────────────────────────
+// ── Availability Zone accent palette — spec §7.8, theme-aware (§11.6) ─────────
 // Qualitative accent set for `availability_zone`, deliberately distinct from
 // the Data/Management/Border hues above so AZ colouring is never confused with
 // plane identity. AZ→colour assignment is a deterministic hash so a given AZ
-// id always resolves to the same colour across renders (§7.8).
-//
-// Deliberately subdued/dimmed tints (rather than the fully-saturated brand
-// accents) — a rack's AZ assignment is a background/categorization signal,
-// not an active-routing signal like the §6.2 link colours, so it should sit
-// visually quieter than Data/Management on the same dark canvas while
-// remaining distinguishable at a glance and in the legend/tooltip swatch.
-export const AZ_PALETTE = ['#1F5C34', '#1E4E78', '#7A2733', '#8C6A24']; // dim Green, Blue, Red, Amber
+// id always resolves to the same colour across renders (§7.8). The palette is
+// deliberately subdued/dimmed relative to the routing-link colours (§6.2)
+// since AZ is a background categorization signal, not an active-routing one.
+// The 4 slots are CSS vars (--az-0..--az-3); actual hex values differ per
+// theme in style.css.
+export const AZ_COLOR_COUNT = 4;
 
 /**
- * getAZColor(azId) — resolves an availability_zone id to its accent colour.
- * Returns null for "n/a"/falsy so callers can fall back to the node's
- * normal fill/stroke without a null-colour rendering.
+ * getAZColor(azId) — resolves an availability_zone id to its accent colour
+ * var() reference. Returns null for "n/a"/falsy so callers can fall back to
+ * the node's normal fill/stroke without a null-colour rendering.
  */
 export function getAZColor(azId) {
   if (!azId || azId === 'n/a') return null;
@@ -92,7 +100,7 @@ export function getAZColor(azId) {
   for (let i = 0; i < azId.length; i++) {
     hash = (hash * 31 + azId.charCodeAt(i)) >>> 0;
   }
-  return AZ_PALETTE[hash % AZ_PALETTE.length];
+  return `var(--az-${hash % AZ_COLOR_COUNT})`;
 }
 
 // ── Rack display order ────────────────────────────────────────────────────────

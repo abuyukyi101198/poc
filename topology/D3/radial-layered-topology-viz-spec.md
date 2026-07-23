@@ -454,6 +454,13 @@ opposite side of the cursor when it would overflow the SVG viewport edge, so the
 **Dismissal:** on `mouseleave`, matching §8.3's resting-state restoration — no separate close affordance needed since
 this is a hover panel, not a pinned/click-to-open one.
 
+### 8.7 Theme mode toggle
+
+A page-level control (separate from the plane-toggle/legend strip below the chart, §8.2/§11.4) switches the entire
+visualization between the dark theme (§11.1, default) and the reintroduced light theme (§11.6). Unlike §8.1's
+option/scale selector, which recomputes layout, the theme toggle only swaps colour — ring geometry, angles, and link
+paths are unaffected. See §11.6 for the full colour-mapping table and persistence behavior.
+
 ---
 
 ## 9. Data Schema
@@ -603,10 +610,15 @@ what triggers the thin outer-edge override stroke rather than a full-fill change
 Visual decisions from the Option C implementation, for consistency when extending to additional options or integrating
 into a product UI.
 
-### 11.1 Color mode: dark theme
+### 11.1 Color mode: dark theme (default) and light theme
 
-The visualization uses a **dark canvas**, on the Canonical/Ubuntu dark-theme surface palette, rather than a light
-background. This governs every other color decision in this section and in §6.2.
+The visualization defaults to a **dark canvas**, on the Canonical/Ubuntu dark-theme surface palette, but is **not**
+dark-only: §11.6 specifies a user-facing toggle that swaps every colour in this section, §6.2, §7.8, and §11.3 for a
+reintroduced Canonical/Ubuntu **light-theme** equivalent. This section documents the dark (default) values; §11.6
+documents the light values and the toggle mechanism itself. Implementation-wise, both palettes are expressed once as
+CSS custom properties (keyed by a `data-theme` attribute), so every other colour decision in this spec is written as
+"the themed value of X" rather than a hardcoded hex, even though the tables below still show literal hex for the
+default (dark) theme for concreteness.
 
 | Surface                     | Color       | Notes                                                            |
 |------------------------------|-------------|-------------------------------------------------------------------|
@@ -616,8 +628,8 @@ background. This governs every other color decision in this section and in §6.2
 | Secondary / muted text      | `#9C948C`   | De-emphasized text (e.g. dimmed labels, helper copy)             |
 
 All ring/node fills (§11.3) and link colors (§6.2) are chosen against this base so that brand hues (Ubuntu Orange,
-Aubergine, warm gold) remain legible and on-palette on a dark surface, rather than the light-surface tints used in
-earlier drafts of this spec.
+Aubergine, warm gold) remain legible and on-palette on a dark surface. See §11.6 for the corresponding light-theme
+surface values.
 
 ### 11.2 Typography
 
@@ -686,12 +698,74 @@ Management plane-tint rule as R3.
   labels below a per-ring angular threshold); full hover/click-triggered re-reveal beyond the tooltip panel is not
   separately implemented, since the tooltip panel (§8.6) already serves that purpose on hover.
 - **Tooltip panel (§8.6):** implemented, including the R5/R6 monospace title treatment and the categorization
-  footer's colour/pattern swatches (solid/dashed/hatched trust-tier swatch, spof/redundant failure-domain dot) —
-  both were gaps in an earlier pass and have since been closed in `tooltip.js`/`style.css`.
-- **MAAS control-plane rendering (§7.7):** the rack-controller badge previously drawn on the R1/R5 arc has been
-  **removed**. Controller assignment is now surfaced exclusively through the tooltip's "MAAS Control Plane" section
-  (§8.6) — there is no on-canvas indicator of `rack_controller_ids` until a node is hovered.
-- **Availability Zone palette (§7.8):** the AZ accent palette has been dimmed from the original fully-saturated
-  candidate set to a subdued/muted set (`#1F5C34`/`#1E4E78`/`#7A2733`/`#8C6A24`), so AZ fill overrides read as a
-  quieter background signal against the dark canvas rather than competing visually with Data/Management link colours.
+  footer's colour/pattern swatches (solid/dashed/hatched trust-tier swatch, spof/redundant failure-domain dot).
+- **MAAS control-plane rendering (§7.7):** controller assignment is surfaced exclusively through the tooltip's
+  "MAAS Control Plane" section (§8.6) — there is no on-canvas arc badge or other indicator of `rack_controller_ids`
+  until a node is hovered.
+- **Availability Zone palette (§7.8):** the dark-theme AZ accent palette (`#1F5C34`/`#1E4E78`/`#7A2733`/`#8C6A24`) is
+  a subdued/muted tint of the four brand accent hues, so AZ fill overrides read as a quieter background signal
+  against the dark canvas rather than competing visually with Data/Management link colours. See §11.6 for the
+  light-theme equivalents.
+- **Theme toggle (§11.6):** implemented — an icon-only dark/light mode toggle button (`theme.js`) flips a
+  `data-theme` attribute on `<html>`; every colour in the chart and HTML chrome is a CSS `var()` reference resolved
+  against `[data-theme]`, so the whole visualization re-colours instantly with no JS-side re-render.
+
+### 11.6 Theme mode toggle (dark/light)
+
+The visualization ships with a user-facing **dark/light mode toggle**, defaulting to dark (§11.1) but able to switch
+to a **Canonical/Ubuntu light theme**.
+
+**Mechanism:** every themable colour in this spec (§11.1 surfaces, §6.2 link colours, §11.3 ring/node fills, §7.8 AZ
+accents) is implemented as a CSS custom property, declared twice — once under `:root`/`[data-theme="dark"]`, once
+under `[data-theme="light"]`. The toggle button sets `data-theme` on the root `<html>` element; because every colour
+consumed by the chart (both SVG attributes, via inline `var()` references, and HTML chrome, via ordinary CSS) resolves
+against this cascade, flipping the attribute re-colours the entire visualization instantly — no re-render, no
+JS-side recomputation of layout or fills.
+
+**Persistence:** the chosen theme is stored client-side (e.g. `localStorage`) so it survives a page reload. The
+toggle is the single source of truth once a user has interacted with it — it does not re-derive from the OS-level
+`prefers-color-scheme` media query after that point, though an implementation may use `prefers-color-scheme` to pick
+the *initial* default before any stored preference exists.
+
+**Control placement:** a small flat **icon-only** button, top-right of the chart header, matching the plane-toggle
+button's visual language (§6.3) rather than a skeuomorphic switch — square, ≤2px border radius, no drop shadow. The
+icon glyph reflects the mode you'd switch *to* (☀ while dark, ☾ while light); the accessible name is carried entirely
+via `aria-label`/`aria-pressed` rather than visible text, since the control needs no label to be understood at a
+glance. Positioned away from the plane-toggle/legend control strip below the chart so it reads as a page-level (not
+chart-level) setting.
+
+**Light theme palette:** every light-theme colour is a tint (white-mixed) of the same Canonical/Ubuntu brand base
+hues used elsewhere in this spec — Ubuntu Orange `#E95420` (Data plane), Aubergine `#77216F` (Management plane),
+Green `#0E8420` / Blue `#0066CC` / Red `#C7162B` / Amber `#F99B11` (AZ accents, §7.8) — rather than independently
+invented colours. Spine (R3) tints use a lower white-mix than Leaf (R4), so R3 reads as the more saturated/anchoring
+tier and R4 lightens outward, mirroring the dark theme's R3→R4 gradient (§11.3). Hover/focus states use the true
+brand-base hue at full strength (no white tint) for maximum contrast against the light canvas — this is why, for
+example, Aubergine's light-theme hover (`#77216F`) is a different hex than its dark-theme hover (`#D98AB5`, a
+lightened tint chosen for contrast against a *dark* canvas instead): the underlying rule is "hover state = whichever
+brand shade gives maximum contrast on that theme's canvas," not "hover state = an identical hex across both themes."
+The Ubuntu Orange brand accent used for the page-title underline and the MAAS Control Plane tooltip section border
+(`#E95420`) is the one exception — it's a fixed brand mark, identical in both themes.
+
+**Light theme reference table:**
+
+| Concept                        | Dark (default)                | Light                          |
+|---------------------------------|--------------------------------|----------------------------------|
+| Chart canvas                   | `#151515`                     | `#FFFFFF`                       |
+| Chart panel / card surface     | `#1E1E1E`                     | `#F2F1EF`                       |
+| Primary text                   | `#F7F7F7`                     | `#111111`                       |
+| Secondary / muted text         | `#9C948C`                     | `#6E6864`                       |
+| R1 Pod fill (neutral)           | `#2E2C2A`                     | `#D4CDC8`                       |
+| R5 Rack fill (neutral)          | `#3A3835`                     | `#908A84`                       |
+| R6 Server fill (neutral)        | `#454340`                     | `#DDD8D3`                       |
+| R3 Spine — Data plane fill      | `#572A19`                     | `#EE7A51`                       |
+| R3 Spine — Management plane fill| `#4A1C39`                     | `#95528F`                       |
+| R4 Leaf — Data plane fill       | `#6B331F`                     | `#F19575`                       |
+| R4 Leaf — Management plane fill | `#5C2347`                     | `#AB75A6`                       |
+| R4 Leaf — Border fill           | `#1F4725` (Sage)               | `#839A68` (Olive/Sage)          |
+| AZ accent 0 / 1 / 2 / 3          | `#1F5C34` / `#1E4E78` / `#7A2733` / `#8C6A24` | `#439F51` / `#3888D7` / `#D3495A` / `#FAB145` |
+| Link — Data (resting / hover)   | `#C1501F` / `#E95420`         | `#EC8763` / `#E95420`           |
+| Link — Management (resting / hover) | `#9C3D72` / `#D98AB5`     | `#A0649A` / `#77216F`           |
+| Link — Containment (resting / hover)| `#8C8579` / `#D8D1CA`     | `#CFC9C2` / `#5E5650`           |
+| Link — Peer adjacency (resting / hover) | `#B68720` / `#EFB73E` | `#FCC87C` / `#F99B11`           |
+
 

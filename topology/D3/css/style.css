@@ -1,16 +1,159 @@
 /*
- * style.css — Phase 5 + 6: Canonical / Ubuntu brand visual treatment
+ * style.css — Phase 5 + 6 + 8: Canonical / Ubuntu brand visual treatment
  *
- * §11.1 Colour mode    — dark theme canvas/panel/text surfaces
- * §6.2  Link palette   — Ubuntu Orange / Aubergine / warm gold, dark-muted
- *                        resting states, full-strength brand hover states
+ * §11.1 Colour mode    — dark AND light theme canvas/panel/text surfaces
+ * §11.6 Theme toggle   — CSS custom properties keyed by `[data-theme]` on
+ *                        <html>, flipped by theme.js. All colours referenced
+ *                        from JS (layout.js/render.js/interaction.js/
+ *                        tooltip.js) are var() lookups against these
+ *                        properties, so toggling data-theme re-colours the
+ *                        entire chart (SVG + HTML chrome) with no re-render.
+ * §6.2  Link palette   — Ubuntu Orange / Aubergine / warm gold
  * §11.2 Typography     — Ubuntu typeface via Google Fonts CDN
  * §6.3  Visual language — flat fills, no gradients, no shadows, generous white space
  * Phase 6 additions: ring-depth legend, header polish, phase badge removed.
+ * Phase 8 additions: dark/light theme toggle (§11.6).
  */
 
 /* ── Ubuntu font — Google Fonts CDN ──────────────────────────────────────── */
 @import url('https://fonts.googleapis.com/css2?family=Ubuntu:wght@300;400;500;700&family=Ubuntu+Mono:wght@400;700&display=swap');
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * §11.6 Theme variables — dark (default) and light
+ *
+ * Every colour used anywhere in the chart (SVG fills/strokes via var() in JS,
+ * and HTML chrome below) is declared here exactly twice: once per theme.
+ * `:root` / `[data-theme="dark"]` holds the canonical dark-theme values from
+ * §11.1/§11.3/§6.2/§7.8; `[data-theme="light"]` holds the reintroduced
+ * Canonical/Ubuntu light-mode values (adapted from the pre-dark-theme Phase
+ * 1–4 palette, extended to cover plane tints/border-leaf/AZ which didn't
+ * exist yet at that point in the project).
+ * ══════════════════════════════════════════════════════════════════════════ */
+:root,
+:root[data-theme="dark"] {
+  /* Surfaces (§11.1) */
+  --canvas-bg:          #151515;
+  --panel-bg:           #1E1E1E;
+  --text-primary:       #F7F7F7;
+  --text-secondary:     #9C948C;
+  --border-subtle:      rgba(247, 247, 247, 0.12);
+  --divider-subtle:     rgba(247, 247, 247, 0.08);
+  --ring-guide-stroke:  rgba(247, 247, 247, 0.08);
+  --chip-border:        rgba(247, 247, 247, 0.14);
+  --swatch-border:      rgba(247, 247, 247, 0.25);
+  --footer-text:        #6E6864;
+  --control-border:     #5A5650;
+  --control-border-hover: #C9C2B8;
+  --neutral-swatch:     #C9C2B8;
+
+  /* Ring/node fills — neutral containment rings (§11.3) */
+  --ring-r1: #2E2C2A;   /* Pod    — darkest neutral, innermost anchor */
+  --ring-r5: #3A3835;   /* Rack   — mid neutral */
+  --ring-r6: #454340;   /* Server — lightest neutral, outermost */
+
+  /* Ring/node fills — plane-tinted routing rings (§11.3) */
+  --plane-r3-data: #572A19;   /* Spine — vivid Orange dark tint */
+  --plane-r3-mgmt: #4A1C39;   /* Spine — vivid Aubergine dark tint */
+  --plane-r4-data: #6B331F;   /* Leaf  — vivid Orange, lighter than R3 */
+  --plane-r4-mgmt: #5C2347;   /* Leaf  — vivid Aubergine, lighter than R3 */
+  --border-leaf-fill: #1F4725; /* Border Leaf — dedicated vivid Sage tint */
+
+  /* Availability Zone accent palette (§7.8) — subdued/dimmed */
+  --az-0: #1F5C34;   /* dim Green */
+  --az-1: #1E4E78;   /* dim Blue */
+  --az-2: #7A2733;   /* dim Red */
+  --az-3: #8C6A24;   /* dim Amber */
+
+  /* Link colours (§6.2) — resting */
+  --link-data:   #C1501F;   /* Ubuntu Orange, vivid dark tint */
+  --link-mgmt:   #9C3D72;   /* Aubergine, vivid dark tint */
+  --link-shared: #8C8579;   /* warm grey, lightened for visibility */
+  --link-peer:   #B68720;   /* Ubuntu Yellow/gold, vivid dark tint */
+
+  /* Link colours (§6.2) — hover/focus, full brand strength */
+  --link-data-hover:   #E95420;   /* Ubuntu Orange full strength */
+  --link-mgmt-hover:   #D98AB5;   /* Aubergine, lightened for dark-bg contrast */
+  --link-shared-hover: #D8D1CA;   /* warm grey, lightened */
+  --link-peer-hover:   #EFB73E;   /* Ubuntu Yellow/gold full strength */
+
+  /* Plane toggle active-state foreground (§8.2) — dark text on vivid button */
+  --toggle-active-fg: #151515;
+
+  /* Tooltip categorization swatches (§7.2/§7.3, §8.6) */
+  --failure-spof:      #C7162B;
+  --failure-redundant: #4E9C5A;
+
+  /* Theme-toggle control icon/label */
+  --theme-toggle-fg: #F7F7F7;
+}
+
+:root[data-theme="light"] {
+  /* Surfaces (§11.1 light variant) */
+  --canvas-bg:          #FFFFFF;
+  --panel-bg:           #F2F1EF;
+  --text-primary:       #111111;
+  --text-secondary:     #6E6864;
+  --border-subtle:      rgba(0, 0, 0, 0.12);
+  --divider-subtle:     rgba(0, 0, 0, 0.08);
+  --ring-guide-stroke:  rgba(0, 0, 0, 0.09);
+  --chip-border:        rgba(0, 0, 0, 0.16);
+  --swatch-border:      rgba(0, 0, 0, 0.25);
+  --footer-text:        #767676;
+  --control-border:     #D4CDC8;
+  --control-border-hover: #767676;
+  --neutral-swatch:     #5E5650;
+
+  /* Ring/node fills — neutral containment rings, recovered from the
+     pre-dark-theme Phase 1–4 palette (git history: commit fd6b6a9). */
+  --ring-r1: #D4CDC8;   /* Pod    — light warm grey, innermost anchor */
+  --ring-r5: #908A84;   /* Rack   — darkest neutral of the three */
+  --ring-r6: #DDD8D3;   /* Server — lightest, outermost, keeps it airy */
+
+  /* Ring/node fills — plane-tinted routing rings. Derived directly from the
+     official Canonical/Ubuntu brand base hues (Orange #E95420, Aubergine
+     #77216F) tinted with white for a light canvas — R3 (Spine) at a lower
+     white-mix so it reads as the more saturated/anchoring tier, R4 (Leaf) at
+     a higher white-mix so it's visibly lighter outward, mirroring the dark
+     theme's R3→R4 gradient. */
+  --plane-r3-data: #EE7A51;   /* Spine — Ubuntu Orange, light tint */
+  --plane-r3-mgmt: #95528F;   /* Spine — Aubergine, light tint */
+  --plane-r4-data: #F19575;   /* Leaf  — Ubuntu Orange, lighter tint than R3 */
+  --plane-r4-mgmt: #AB75A6;   /* Leaf  — Aubergine, lighter tint than R3 */
+  --border-leaf-fill: #839A68; /* Border Leaf — Ubuntu Olive/Sage tint, distinct from both planes */
+
+  /* Availability Zone accent palette (§7.8) — light tints of the same four
+     Canonical brand accent hues used for the dark theme's AZ palette (Green
+     #0E8420, Blue #0066CC, Red #C7162B, Amber #F99B11), so AZ identity stays
+     tied to the real brand hue in both themes rather than an invented colour. */
+  --az-0: #439F51;   /* Green tint */
+  --az-1: #3888D7;   /* Blue tint */
+  --az-2: #D3495A;   /* Red tint */
+  --az-3: #FAB145;   /* Amber tint */
+
+  /* Link colours (§6.2 light variant) — resting states are light tints of the
+     same Canonical brand base hues as the plane fills above. */
+  --link-data:   #EC8763;   /* Ubuntu Orange, light tint */
+  --link-mgmt:   #A0649A;   /* Aubergine, light tint */
+  --link-shared: #CFC9C2;   /* Warm Grey, light tint — containment skeleton */
+  --link-peer:   #FCC87C;   /* Amber, light tint */
+
+  /* Link colours (§6.2 light variant) — hover/focus at true brand-base
+     strength (no white tint) for maximum contrast against a light canvas. */
+  --link-data-hover:   #E95420;   /* Ubuntu Orange */
+  --link-mgmt-hover:   #77216F;   /* Aubergine */
+  --link-shared-hover: #5E5650;   /* dark Warm Grey */
+  --link-peer-hover:   #F99B11;   /* Amber */
+
+  /* Plane toggle active-state foreground (§8.2) — light text on vivid button */
+  --toggle-active-fg: #FFFFFF;
+
+  /* Tooltip categorization swatches — same alert/confirm semantics both themes */
+  --failure-spof:      #C7162B;
+  --failure-redundant: #2E7D3C;
+
+  /* Theme-toggle control icon/label */
+  --theme-toggle-fg: #111111;
+}
 
 /* ── Reset & box model ────────────────────────────────────────────────────── */
 *, *::before, *::after {
@@ -19,19 +162,21 @@
   padding: 0;
 }
 
-/* ── Page — §11.1 dark theme base surface ────────────────────────────────── */
+/* ── Page — §11.1 theme-aware base surface ───────────────────────────────── */
 body {
   font-family: 'Ubuntu', -apple-system, 'Segoe UI', sans-serif;
-  background: #151515;       /* §11.1 Canonical dark-theme base surface */
-  color: #F7F7F7;             /* §11.1 primary text */
+  background: var(--canvas-bg);
+  color: var(--text-primary);
   min-height: 100vh;
   display: flex;
   flex-direction: column;
   align-items: center;
+  transition: background 0.15s ease, color 0.15s ease;
 }
 
 /* ── Page header ──────────────────────────────────────────────────────────── */
 .page-header {
+  position: relative;
   padding: 40px 32px 16px;
   text-align: center;
   width: 100%;
@@ -41,7 +186,7 @@ body {
   font-size: 22px;
   font-weight: 300;           /* Ubuntu Light — Canonical title treatment */
   letter-spacing: 0.04em;
-  color: #F7F7F7;             /* §11.1 primary text */
+  color: var(--text-primary);
 }
 
 /* Thin Ubuntu Orange accent line below the title — Canonical brand motif */
@@ -50,16 +195,47 @@ body {
   display: block;
   width: 40px;
   height: 2px;
-  background: #E95420;        /* Ubuntu Orange full strength */
+  background: #E95420;        /* Ubuntu Orange full strength — same both themes */
   margin: 10px auto 0;
 }
 
 .page-header .subtitle {
   font-size: 12px;
   font-weight: 400;
-  color: #9C948C;             /* §11.1 secondary/muted text */
+  color: var(--text-secondary);
   margin-top: 12px;
   letter-spacing: 0.02em;
+}
+
+/* ── Phase 8 — Dark/light theme toggle (§11.6) ───────────────────────────── */
+/* Small flat icon-only button, top-right of the header, matching the
+   plane-toggle pill visual language (§6.3) rather than a skeuomorphic
+   switch — square, ≤2px border radius, no drop shadow. */
+.theme-toggle-btn {
+  position: absolute;
+  top: 40px;
+  right: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid var(--control-border);
+  background: var(--panel-bg);
+  color: var(--theme-toggle-fg);
+  cursor: pointer;
+  border-radius: 2px;
+  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+}
+
+.theme-toggle-btn:hover {
+  border-color: var(--control-border-hover);
+}
+
+.theme-toggle-btn .theme-toggle-icon {
+  font-size: 14px;
+  line-height: 1;
 }
 
 /* ── Chart container ──────────────────────────────────────────────────────── */
@@ -121,57 +297,57 @@ body {
 .controls-label {
   font-size: 11px;
   font-weight: 500;
-  color: #9C948C;             /* §11.1 secondary/muted text */
+  color: var(--text-secondary);
   letter-spacing: 0.06em;
   text-transform: uppercase;
   margin-right: 4px;
 }
 
-/* Inactive: dark panel fill, muted warm grey border (§11.1 panel surface) */
+/* Inactive: panel fill, muted border (§11.1 panel surface) */
 .toggle-btn {
   font-family: 'Ubuntu', -apple-system, 'Segoe UI', sans-serif;
   font-size: 11px;
   font-weight: 400;
   letter-spacing: 0.03em;
   padding: 5px 16px;
-  border: 1px solid #5A5650;
-  background: #1E1E1E;        /* §11.1 chart panel / card surface */
-  color: #9C948C;
+  border: 1px solid var(--control-border);
+  background: var(--panel-bg);
+  color: var(--text-secondary);
   cursor: pointer;
   border-radius: 2px;
   transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
 }
 
 .toggle-btn:hover:not(.active) {
-  border-color: #C9C2B8;
-  color: #F7F7F7;
+  border-color: var(--control-border-hover);
+  color: var(--text-primary);
 }
 
-/* Active states: full-strength brand hover colours (render.js LINK_HOVER_COLORS,   */
-/* dark-theme link palette, spec §6.2) — vivid against the dark panel surface.      */
+/* Active states: full-strength brand hover colours (render.js LINK_HOVER_COLORS, §6.2),
+   theme-aware via the same var()s consumed by the SVG links. */
 .toggle-btn.active[data-plane="data"] {
-  background:   #E95420;   /* Ubuntu Orange full strength */
-  border-color: #E95420;
-  color: #151515;
+  background:   var(--link-data-hover);
+  border-color: var(--link-data-hover);
+  color: var(--toggle-active-fg);
 }
 
 .toggle-btn.active[data-plane="mgmt"] {
-  background:   #D98AB5;   /* Aubergine, lightened for dark-bg contrast */
-  border-color: #D98AB5;
-  color: #151515;
+  background:   var(--link-mgmt-hover);
+  border-color: var(--link-mgmt-hover);
+  color: var(--toggle-active-fg);
 }
 
 .toggle-btn.active[data-plane="shared"] {
-  background:   #D8D1CA;   /* warm grey, lightened */
-  border-color: #D8D1CA;
-  color: #151515;
+  background:   var(--link-shared-hover);
+  border-color: var(--link-shared-hover);
+  color: var(--toggle-active-fg);
 }
 
 /* ── Footer ───────────────────────────────────────────────────────────────── */
 footer {
   padding: 16px 32px 24px;
   font-size: 11px;
-  color: #6E6864;
+  color: var(--footer-text);
   text-align: center;
 }
 
@@ -199,7 +375,7 @@ footer {
   align-items: center;
   gap: 5px;
   font-size: 11px;
-  color: #F7F7F7;
+  color: var(--text-primary);
   cursor: default;
 }
 
@@ -210,21 +386,21 @@ footer {
   height: 12px;
   flex-shrink: 0;
   border-radius: 1px;
-  border: 1px solid rgba(247, 247, 247, 0.14);
+  border: 1px solid var(--chip-border);
 }
 
-/* Chip colours — must match RING_COLORS / PLANE_TINTS / BORDER_LEAF_FILL in layout.js */
-.legend-ring[data-ring="R1"]::before { background-color: #2E2C2A; }   /* Pod (neutral) */
-.legend-ring[data-ring="R3"]::before { background-color: #572A19; }   /* Spine — Data tint (illustrative) */
-.legend-ring[data-ring="R4"]::before { background-color: #6B331F; }   /* Leaf — Data tint (illustrative) */
-.legend-ring[data-ring="R5"]::before { background-color: #3A3835; }   /* Rack (neutral) */
-.legend-ring[data-ring="R6"]::before { background-color: #454340; }   /* Server (neutral) */
-.legend-ring[data-ring="border"]::before { background-color: #1F4725; }   /* Border Leaf — dedicated Sage tint */
+/* Chip colours — must match RING_COLORS / PLANE_TINTS / BORDER_LEAF_FILL var()s */
+.legend-ring[data-ring="R1"]::before { background-color: var(--ring-r1); }
+.legend-ring[data-ring="R3"]::before { background-color: var(--plane-r3-data); }   /* Spine — Data tint (illustrative) */
+.legend-ring[data-ring="R4"]::before { background-color: var(--plane-r4-data); }   /* Leaf — Data tint (illustrative) */
+.legend-ring[data-ring="R5"]::before { background-color: var(--ring-r5); }
+.legend-ring[data-ring="R6"]::before { background-color: var(--ring-r6); }
+.legend-ring[data-ring="border"]::before { background-color: var(--border-leaf-fill); }
 
 /* Arrow between ring chips */
 .legend-arrow {
   font-size: 10px;
-  color: #6E6864;
+  color: var(--footer-text);
   font-weight: 300;
   flex-shrink: 0;
 }
@@ -232,7 +408,7 @@ footer {
 /* Interaction hint appended at the end of the ring legend */
 .legend-hint {
   font-size: 11px;
-  color: #6E6864;
+  color: var(--footer-text);
   margin-left: 6px;
   font-style: italic;
 }
@@ -248,13 +424,13 @@ footer {
   z-index: 1000;
   max-width: 260px;
   padding: 10px 12px;
-  background: #1E1E1E;                              /* §11.1 chart panel surface */
-  border: 1px solid rgba(247, 247, 247, 0.12);
+  background: var(--panel-bg);
+  border: 1px solid var(--border-subtle);
   border-radius: 4px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);        /* floating UI chrome — §6.3 flat-fill rule is chart-only */
   font-family: 'Ubuntu', -apple-system, 'Segoe UI', sans-serif;
   font-size: 11px;
-  color: #F7F7F7;
+  color: var(--text-primary);
   pointer-events: none;                              /* never intercepts hover from the SVG arc beneath it */
 }
 
@@ -271,7 +447,7 @@ footer {
   height: 10px;
   flex-shrink: 0;
   border-radius: 2px;
-  border: 1px solid rgba(247, 247, 247, 0.25);
+  border: 1px solid var(--swatch-border);
 }
 
 .tooltip-title {
@@ -281,31 +457,37 @@ footer {
   text-overflow: ellipsis;
 }
 
+/* §8.6 style table — R5/R6 tooltip labels use Ubuntu Mono, matching the
+   §11.2 arc-label treatment for rack/server ids. */
+.tooltip-title.is-mono {
+  font-family: 'Ubuntu Mono', 'Courier New', monospace;
+}
+
 .tooltip-ring-badge {
   font-size: 9px;
   font-weight: 400;
-  color: #9C948C;
+  color: var(--text-secondary);
   white-space: nowrap;
 }
 
 .tooltip-meta {
   margin-top: 4px;
   font-size: 10px;
-  color: #9C948C;
+  color: var(--text-secondary);
 }
 
 .tooltip-divider {
   height: 1px;
   margin: 8px 0;
-  background: rgba(247, 247, 247, 0.08);
+  background: var(--divider-subtle);
 }
 
 .tooltip-section {
   padding-left: 8px;
-  border-left: 2px solid #9C948C;
+  border-left: 2px solid var(--text-secondary);
 }
 
-/* MAAS Control Plane section (§7.7) — Ubuntu Orange accent border */
+/* MAAS Control Plane section (§7.7) — Ubuntu Orange accent border, same both themes */
 .tooltip-section--control {
   border-left-color: #E95420;
 }
@@ -315,14 +497,14 @@ footer {
   font-weight: 500;
   letter-spacing: 0.05em;
   text-transform: uppercase;
-  color: #9C948C;
+  color: var(--text-secondary);
   margin-bottom: 2px;
 }
 
 .tooltip-mono {
   font-family: 'Ubuntu Mono', 'Courier New', monospace;
   font-size: 10.5px;
-  color: #F7F7F7;
+  color: var(--text-primary);
 }
 
 .tooltip-az {
@@ -330,18 +512,18 @@ footer {
   align-items: center;
   gap: 6px;
   font-size: 10.5px;
-  color: #F7F7F7;
+  color: var(--text-primary);
 }
 
 .tooltip-az-rack {
-  color: #9C948C;
+  color: var(--text-secondary);
   font-weight: 400;
 }
 
 .tooltip-footer {
   margin-top: 6px;
   font-size: 10px;
-  color: #9C948C;
+  color: var(--text-secondary);
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -350,7 +532,7 @@ footer {
 
 /* §7.2 trust_tier encoding, restated as a small swatch in the tooltip footer
    (§8.6 point 5) — solid border = operator, dashed border = tenant, hatched
-   fill = workload. Neutral warm-grey so the swatch reads as a categorization
+   fill = workload. Neutral colour so the swatch reads as a categorization
    indicator, not a plane/AZ colour. */
 .trust-swatch {
   display: inline-block;
@@ -360,7 +542,7 @@ footer {
   vertical-align: -1px;
   border-radius: 1px;
   background: transparent;
-  border: 1.5px solid #C9C2B8;
+  border: 1.5px solid var(--neutral-swatch);
 }
 
 .trust-swatch.trust-operator {
@@ -375,7 +557,7 @@ footer {
   border-style: solid;
   background-image: repeating-linear-gradient(
     45deg,
-    #C9C2B8 0, #C9C2B8 1.5px,
+    var(--neutral-swatch) 0, var(--neutral-swatch) 1.5px,
     transparent 1.5px, transparent 3.5px
   );
 }
@@ -393,17 +575,17 @@ footer {
 }
 
 .failure-swatch.failure-spof {
-  background: #C7162B;
+  background: var(--failure-spof);
 }
 
 .failure-swatch.failure-redundant {
-  background: #4E9C5A;
+  background: var(--failure-redundant);
 }
 
 .tooltip-desc {
   margin-top: 6px;
   font-size: 10px;
   font-style: italic;
-  color: #9C948C;
+  color: var(--text-secondary);
 }
 

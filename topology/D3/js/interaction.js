@@ -18,7 +18,7 @@
  */
 
 import * as d3 from 'd3';
-import { linkColorKey } from './render.js';
+import { linkColorKey, LINK_COLORS, LINK_HOVER_COLORS } from './render.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -29,19 +29,11 @@ const RING_DEPTH = { R1: 0, R3: 1, R4: 2, R5: 3, R6: 4 };
 
 const RESTING_LINK_OPACITY = { data: 1, mgmt: 1, shared: 1, peer_adjacency: 1 };
 
-const RESTING_LINK_STROKE = {
-  data:           '#C1501F',
-  mgmt:           '#9C3D72',
-  shared:         '#8C8579',
-  peer_adjacency: '#B68720',
-};
-
-const HOVER_LINK_STROKE = {
-  data:           '#E95420',
-  mgmt:           '#D98AB5',
-  shared:         '#D8D1CA',
-  peer_adjacency: '#EFB73E',
-};
+// Resting/hover stroke colours are theme-aware CSS var() references, sourced
+// from render.js's LINK_COLORS/LINK_HOVER_COLORS (§11.6) rather than
+// duplicated here — a single source of truth per theme in style.css.
+const RESTING_LINK_STROKE = LINK_COLORS;
+const HOVER_LINK_STROKE   = LINK_HOVER_COLORS;
 
 const RESTING_STROKE_WIDTH = 1;
 const HOVER_STROKE_WIDTH   = 1.5;

@@ -10,6 +10,10 @@
  *          MAAS control-plane data (§7.7) is surfaced via the tooltip only
  *          (tooltip.js) — no arc-level badge is rendered.
  *
+ * Theming (§11.6): every colour value below is a CSS var() reference, not a
+ * literal hex — see style.css for the dark/light hex values and theme.js for
+ * the toggle that flips `document.documentElement.dataset.theme`.
+ *
  * Phase 4 hover/focus and plane toggles are in interaction.js.
  * Tooltip panel content (§8.6) is in tooltip.js.
  */
@@ -36,25 +40,26 @@ const RING_NAMES = {
   R6: 'Server',
 };
 
-// ── Phase 5 link colours — Canonical/Ubuntu brand palette, dark theme (§6.2) ──
+// ── Phase 5 link colours — Canonical/Ubuntu brand palette, theme-aware (§6.2/§11.6) ──
 //
-// Resting states are saturated mid-tones of each brand hue — vivid enough to
-// read clearly against the dark canvas (§11.1) without competing with the
-// full-strength hover state. Colour is resolved by `plane` for routing/
+// Every value here is a CSS var() reference, not a literal hex — the actual
+// per-theme hex values live in style.css under `[data-theme="dark"]` /
+// `[data-theme="light"]`, so toggling the theme (theme.js) re-colours every
+// link without any JS re-render. Colour is resolved by `plane` for routing/
 // containment links, and by `type` for the `peer_adjacency` exception
 // (§6.1a) — see linkColorKey() below.
 export const LINK_COLORS = {
-  data:           '#C1501F',   // Ubuntu Orange, vivid dark tint — resting
-  mgmt:           '#9C3D72',   // Aubergine, vivid dark tint — resting
-  shared:         '#8C8579',   // warm grey, lightened for visibility — resting
-  peer_adjacency: '#B68720',   // Ubuntu Yellow/gold, vivid dark tint — resting (§6.1a)
+  data:           'var(--link-data)',
+  mgmt:           'var(--link-mgmt)',
+  shared:         'var(--link-shared)',
+  peer_adjacency: 'var(--link-peer)',
 };
 
 export const LINK_HOVER_COLORS = {
-  data:           '#E95420',   // Ubuntu Orange full strength
-  mgmt:           '#D98AB5',   // Aubergine, lightened further for dark-bg contrast
-  shared:         '#D8D1CA',   // warm grey, lightened
-  peer_adjacency: '#EFB73E',   // Ubuntu Yellow/gold full strength
+  data:           'var(--link-data-hover)',
+  mgmt:           'var(--link-mgmt-hover)',
+  shared:         'var(--link-shared-hover)',
+  peer_adjacency: 'var(--link-peer-hover)',
 };
 
 // All planes at full opacity — the tint colour carries the visual weight,
@@ -95,7 +100,7 @@ export function getNodeFill(node) {
   if (node.ring === 'R4' && node.leaf_role === 'border') return BORDER_LEAF_FILL;
   const tint = PLANE_TINTS[node.ring]?.[node.plane];
   if (tint) return tint;
-  return RING_COLORS[node.ring] ?? '#3A3835';
+  return RING_COLORS[node.ring] ?? 'var(--ring-r5)';
 }
 
 /**
@@ -148,7 +153,7 @@ export function init(rootSelector = '#topology') {
     .join('circle')
       .attr('r',            d => d.outerRadius + 2)
       .attr('fill',         'none')
-      .attr('stroke',       'rgba(247, 247, 247, 0.08)')
+      .attr('stroke',       'var(--ring-guide-stroke)')
       .attr('stroke-width', 0.6);
 
   // ── Arc generator ─────────────────────────────────────────────────────────────
@@ -172,7 +177,7 @@ export function init(rootSelector = '#topology') {
       .attr('id',           d => `arc-${d.id}`)
       .attr('d',            arcGen)
       .attr('fill',         d => getNodeFill(d))
-      .attr('stroke',       d => getArcOverrideStroke(d, rackAzById) ?? '#151515')
+      .attr('stroke',       d => getArcOverrideStroke(d, rackAzById) ?? 'var(--canvas-bg)')
       .attr('stroke-width', d => getArcOverrideStroke(d, rackAzById) ? 3 : 1.5);
 
   // ── Links placeholder (Phase 2) ───────────────────────────────────────────────
@@ -191,7 +196,7 @@ export function init(rootSelector = '#topology') {
       .attr('text-anchor',        'middle')
       .attr('dominant-baseline',  'central')
       .attr('font-size',          d => arcLabelFontSize(d))
-      .attr('fill',               '#F7F7F7')    // §11.1 dark-theme primary text colour
+      .attr('fill',               'var(--text-primary)')    // §11.1 primary text colour, theme-aware
       .attr('pointer-events',     'none')
       .style('user-select',       'none')
       // Hide label if arc is too narrow (§8.4 degradation placeholder)
@@ -223,7 +228,7 @@ export function init(rootSelector = '#topology') {
       .attr('dominant-baseline', 'auto')
       .attr('font-size',         '10px')
       .attr('font-style',        'italic')
-      .attr('fill',              '#9C948C')    // §11.1 dark-theme secondary/muted text
+      .attr('fill',              'var(--text-secondary)')    // §11.1 secondary/muted text, theme-aware
       .attr('pointer-events',    'none')
       .text(d => d.label);
 
@@ -235,7 +240,7 @@ export function init(rootSelector = '#topology') {
     .attr('text-anchor',       'middle')
     .attr('dominant-baseline', 'central')
     .attr('font-size',         '11px')
-    .attr('fill',              '#9C948C')    // §11.1 dark-theme secondary/muted text
+    .attr('fill',              'var(--text-secondary)')    // §11.1 secondary/muted text, theme-aware
     .text('Option C');
 
   // Note: MAAS control-plane rack-controller data (§7.7) is surfaced exclusively

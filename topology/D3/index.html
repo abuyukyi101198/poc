@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -27,6 +27,20 @@
       Option C &nbsp;·&nbsp; Standard Leaf-Spine Pod
       &nbsp;·&nbsp; Radial Layered (Sugiyama) Dendrogram Graph
     </p>
+    <!--
+      §11.6 dark/light theme toggle — icon-only, labelled for assistive tech
+      via aria-label/aria-pressed only. Icon glyph set by theme.js to reflect
+      the mode you'd switch TO.
+    -->
+    <button
+      id="theme-toggle"
+      class="theme-toggle-btn"
+      type="button"
+      aria-pressed="false"
+      aria-label="Toggle dark/light theme"
+    >
+      <span class="theme-toggle-icon" aria-hidden="true">☀</span>
+    </button>
   </header>
 
   <main class="chart-container">
@@ -74,6 +88,11 @@
     import { init, drawLinks } from './js/render.js';
     import { initInteraction } from './js/interaction.js';
     import { initTooltip } from './js/tooltip.js';
+    import { initThemeToggle } from './js/theme.js';
+
+    // Phase 8: dark/light theme toggle (§11.6) — applied before/independent
+    // of chart rendering, since colours resolve live via CSS var().
+    initThemeToggle('#theme-toggle');
 
     // Phase 1: static ring geometry
     const { root, layoutNodes, links } = init('#topology');
