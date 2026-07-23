@@ -101,7 +101,10 @@ export function getNodeFill(node) {
     if (azColor) return azColor;
   }
   if (node.ring === 'R4' && node.leaf_role === 'border') return BORDER_LEAF_FILL;
-  const tint = PLANE_TINTS[node.ring]?.[node.plane];
+  // For routing rings (R2/R3/R4), prefer the node's own plane tint; fall back
+  // to the data-plane tint for "shared"-plane nodes (e.g. TOR in Option B)
+  // so they render with the same visual family as access leaves, not as neutral racks.
+  const tint = PLANE_TINTS[node.ring]?.[node.plane] ?? PLANE_TINTS[node.ring]?.data;
   if (tint) return tint;
   return RING_COLORS[node.ring] ?? 'var(--ring-r5)';
 }
