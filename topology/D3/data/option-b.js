@@ -23,7 +23,7 @@ export const nodes = [
     leaf_role: "access",
     trust_tier: "operator",
     failure_domain_role: "redundant",
-    rack_controller_ids: ["rc-b1"],
+    rack_controller_ids: [],
     availability_zone: "n/a",
     metadata: { role: "tor", description: "Top-of-rack switch running Ubuntu NOS; dual-homed servers tolerate a single ToR failure." }
   },
@@ -36,7 +36,7 @@ export const nodes = [
     leaf_role: "access",
     trust_tier: "operator",
     failure_domain_role: "redundant",
-    rack_controller_ids: ["rc-b1"],
+    rack_controller_ids: [],
     availability_zone: "n/a",
     metadata: { role: "tor", description: "Top-of-rack switch running Ubuntu NOS; dual-homed servers tolerate a single ToR failure." }
   },

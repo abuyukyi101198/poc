@@ -22,7 +22,7 @@ export const nodes = [
     leaf_role: "access",
     trust_tier: "operator",
     failure_domain_role: "spof",
-    rack_controller_ids: ["rc-a1"],
+    rack_controller_ids: [],
     availability_zone: "n/a",
     metadata: {
       role: "tor",

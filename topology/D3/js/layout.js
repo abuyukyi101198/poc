@@ -2,9 +2,9 @@
  * layout.js — Phase 1 (generalized for multi-option support, Phase 9)
  *
  * Computes angular and radial positions for whichever option's nodes/links
- * are passed in — Option A/B (2 rings: TOR + Server), Option C (5 rings:
- * Pod/Spine/Leaf/Rack/Server), Option D (6 rings: Border Leaf/Superspine/
- * Spine/Leaf/Rack/Server) all flow through the same generic algorithm below,
+ * are passed in — Option A/B (3 rings: TOR/Rack/Server), Option C (5 rings:
+ * Pod/Spine/Leaf/Rack/Server), Option D (6 rings: Pod/Superspine/Spine/Leaf/
+ * Rack/Server) all flow through the same generic algorithm below,
  * driven entirely by which of the 7 canonical rings (R0-R6) are actually
  * present in the node set (spec §3.2 "ring independence" / §3.3 per-option
  * ring population).

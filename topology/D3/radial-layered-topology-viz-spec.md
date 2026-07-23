@@ -121,7 +121,7 @@ Every node, regardless of ring, carries:
   leaf_role: "access" | "border" | "n/a",                  // R4 only, §4.3/§7.5; "n/a" for all other rings
   trust_tier: "operator" | "tenant" | "workload" | "n/a",  // §7.2 — this is the single source of truth for the enum
   failure_domain_role: "spof" | "redundant" | "n/a",       // §7.3 — this is the single source of truth for the enum
-  rack_controller_ids: string[],                           // R1/R5 only, §7.7; [] for all other rings
+  rack_controller_ids: string[],                           // R5 Rack (all options) and R1 Pod (when present), §7.7; [] for all other rings
   availability_zone: string | "n/a",                       // R5/R6 only, §7.8; "n/a" for all other rings
   metadata: { ... }         // free-form, for tooltips/detail panel
 }
@@ -147,6 +147,20 @@ satellite-glyph approach; see §7.5). Border Leaves receive their own dedicated 
 Data and Management tints, §11.3) so they remain visually identifiable within the R4 ring regardless of which plane
 they're associated with.
 
+### 4.4 Per-option ring-name overrides (`meta.ringNames`)
+
+Each option fixture exports a `meta` object with an optional `ringNames` map that overrides the default display name
+for any ring in that option's UI (legend chips, ring-name labels around the chart, tooltip ring badges). The default
+names are: R0 → "Region", R1 → "Pod", R2 → "Superspine", R3 → "Spine", R4 → "Leaf", R5 → "Rack", R6 → "Server".
+
+Options A and B override `R4 → "TOR"` because no distinct leaf/spine split exists and the generic "Leaf" label would
+be misleading. They also override `R5 → "Rack"` to be explicit (the default matches, but the override makes intent
+clear). Option D uses `R2 → "Superspine"` (matches the default; the override is a no-op kept for documentation
+clarity). Option C exports an empty `ringNames: {}` since all defaults match.
+
+Overrides are cosmetic only — they do not affect ring identity, layout, link rules, or any other behavior. The
+canonical ring identifiers (R0–R6) remain the structural keys throughout the codebase.
+
 ---
 
 ## 5. Layout Algorithm
@@ -164,19 +178,34 @@ For each ring, independently:
    counts its servers once, not twice, when computing the leaf arcs' widths). Alternative weight modes (bandwidth-sum,
    raw device count) are configurable per §9.2.
 2. Order nodes within the ring to **minimize link crossings** to the adjacent (parent) ring. This is the radial
-   analogue of the classic Sugiyama crossing-minimization step (barycenter or median heuristic, applied per ring pass,
-   working inward from the outermost populated ring toward R0, then refined in a second outward pass).
+   analogue of the classic Sugiyama crossing-minimization step. The current implementation uses a **single-pass
+   barycenter heuristic** working inward from the outermost populated ring toward R0 — see §10 item 1 for the
+   planned multi-pass extension.
 3. Assign angular span proportional to weight, with a fixed minimum arc width so that low-weight nodes remain
    clickable/hoverable.
-4. Leave a small fixed angular gutter between sibling arcs and a larger gutter between groups that share a common
-   parent, to visually pre-group children before links are drawn.
-5. R4 leaf nodes are positioned using the circular mean of the rack angles they serve, minimizing rack-to-leaf curvature
-   while correctly handling the 0/2π seam.
+4. Leave a small fixed angular gutter between sibling arcs and a larger gutter between groups that share a
+   common parent, to visually pre-group children before links are drawn.
+5. Each inner ring is positioned using the **circular mean** of the angular centroids of its children in the
+   next-outward populated ring (weighted by child weight), minimizing curvature while correctly handling the
+   0/2π seam. This pass works inward from the base ring (the populated ring just inside the Server ring) all
+   the way to the root — R4 leaves by rack centroids, R3 spines by leaf centroids, R2 superspines by spine
+   centroids, R1 Pod by superspine centroids. Data-plane nodes are placed before their Management-plane
+   counterparts at each tier to keep paired Data/Management nodes adjacent.
 
 ### 5.3 Radii
 
-Ring radii are fixed proportions of the available chart radius. Omitted rings consume no radial space. Labels degrade to
-hover-only when the available arc length falls below the configured threshold (§8.4).
+Ring radii are computed proportionally from the available chart radius. Each populated ring is assigned a band
+thickness proportional to a fixed per-ring weight (`RING_BAND_WEIGHT`) that reflects the visual prominence appropriate
+to each tier: Server (R6) gets the widest band to maximize arc surface for dense labels; Leaf/TOR (R4) is the second
+widest; Spine (R3) and Rack (R5) are equal; Pod (R1) is the narrowest anchor. A fixed inter-ring gap (18 px) is
+subtracted between each adjacent pair before the remainder is distributed proportionally. Omitted rings consume no
+radial space; their band weight is simply not included, so adjacent populated rings stay contiguous and the full
+available radius is always used. Labels degrade to hover-only when the available arc length falls below the
+configured threshold (§8.4).
+
+**Relative band-thickness weights** (inner → outer): R0 = 0.8, R1 = 1.0, R2 = 1.3, R3 = 1.18, R4 = 1.45,
+R5 = 1.18, R6 = 2.23. The fixed reference values from §11.3 are for Option C (5 rings); other options will see
+different absolute radii as the same weights are redistributed across fewer or more rings.
 
 ---
 
@@ -241,19 +270,27 @@ stroke is available as an alternate mode (§9.2) for network-engineering-focused
 ### 6.4 Link path geometry
 
 All links — standard inter-ring links and the same-ring peer-adjacency exception alike (§6.1a) — follow the same
-circular dendrogram path grammar:
+circular dendrogram ("tree-of-life") path grammar:
 
-- Radial segment from source node to the gap midpoint (arc entry point).
-- Circular arc at the gap midpoint, sweeping from source angle to target angle.
-- Radial segment from the arc exit point into the target node.
+- **Radial segment** from the source node's outer edge to the arc entry point (at the gap midpoint radius, subject
+  to per-lane offset, §6.6).
+- **Circular arc** at the gap midpoint radius, sweeping from the source angle to the target angle (shortest arc;
+  CW or CCW determined by the signed angular difference).
+- **Radial segment** from the arc exit point to the target node's inner edge.
 
 For standard links the gap midpoint sits between two adjacent populated rings; for same-ring peer links (§6.1a) it
 sits at a small fixed radial offset **inside** the shared ring's own band (inward from the outer edge), so that the
 peer arc is clearly separated from the outward routing/containment arcs that float in the gap just beyond the same
-ring's outer edge. All link segments are therefore
-radial or circular in every case. Explicit edge bundling or angular deflection is not part of this specification.
-Where multiple links from different plane/type lanes would otherwise coincide in the same gap, each lane is offset by
-a small fixed radial amount rather than sharing one path — see §6.6.
+ring's outer edge.
+
+**Full-circle root special case:** when the source (inner) node spans the full 360° circle — as the single Pod node
+does in Options C and D — there is no meaningful "source angle." In this case the arc entry angle is taken from the
+*target* node's angle instead, producing a purely radial inward stub and a degenerate zero-length arc. This ensures
+Pod→child links are strictly radial rather than diagonal.
+
+All link segments are therefore radial or circular in every case. Explicit edge bundling or angular deflection is not
+part of this specification. Where multiple links from different plane/type lanes would otherwise coincide in the same
+gap, each lane is offset by a small fixed radial amount rather than sharing one path — see §6.6.
 
 ### 6.5 Multi-parent rendering
 
@@ -331,14 +368,16 @@ Rendered as a distinct dashed/red "null link" glyph on hover or in an explicit "
 
 ### 7.7 MAAS control-plane / provisioning hierarchy
 
-Represented via `rack_controller_ids` (§4.2) on R1 Pod and R5 Rack nodes — a list because a rack is typically served
-by **two or more redundant rack controllers** in Options C/D, while in Options A/B a single controller may cover an
-entire site (populated at R1 instead of per-rack). This is deliberately **not** folded into the R5 Rack node's
+Represented via `rack_controller_ids` (§4.2) on **R5 Rack nodes** in all options — a list because a rack is
+typically served by **two or more redundant rack controllers** in Options C/D, while in Options A/B a single
+controller may serve both racks site-wide (both R5 Rack nodes share the same controller ID). When an R1 Pod node is
+present (Options C/D), `rack_controller_ids` may also be populated there to represent a site-level or region-level
+controller scope; it is empty (`[]`) on all R2–R4 nodes. This is deliberately **not** folded into the R5 Rack node's
 identity or the physical containment tree (§2 item 1) precisely because the mapping isn't 1:1 — a rack controller
 grouping is a control-plane concept, a rack is a physical one, and conflating them was an error in earlier fixture
 comments this spec revision corrects. Rendered **exclusively via the tooltip's dedicated MAAS Control Plane
 section** (§8.6) listing the controller IDs — no arc-level badge, glyph, or other on-canvas indicator is drawn; the
-rack/pod arc itself carries no visual sign of controller assignment until hovered. Never rendered as a link, and
+rack arc itself carries no visual sign of controller assignment until hovered. Never rendered as a link, and
 never affects ring geometry.
 
 ### 7.8 Availability Zone (AZ) / multitenancy boundary
@@ -389,6 +428,11 @@ per-plane color — is specified once, in §11.4; not repeated here.)
 Hovering a node highlights its complete ancestor lineage by traversing all incoming links toward lower ring depths.
 Because the topology permits multiple parents, the highlighted lineage is generally a connected subgraph rather than a
 single path.
+
+**Ring depth ordering** (used by the BFS traversal to determine "toward root"): R1=0, R2=1, R3=2, R4=3, R5=4, R6=5.
+The BFS follows only edges whose other endpoint has a strictly lower depth than the current node — i.e. strictly
+toward the root. Rings not populated in the active option simply have no nodes at that depth, so the traversal
+naturally skips them without special handling.
 
 **What is highlighted:**
 
@@ -671,19 +715,22 @@ Two fill families are used:
 | Ring / role                     | Inner radius (px) | Outer radius (px) | Fill colour | Notes                                   |
 |----------------------------------|--------------------|--------------------|-------------|-------------------------------------------|
 | R1 Pod (neutral)                 | 38                 | 82                 | `#2E2C2A`   | Darkest neutral — innermost visual anchor |
-| R3 Spine — Data plane             | 100                | 152                | `#572A19`   | Vivid Ubuntu Orange tint over dark base    |
-| R3 Spine — Management plane       | 100                | 152                | `#4A1C39`   | Vivid Aubergine tint over dark base        |
-| R4 Leaf — Data plane, access      | 170                | 234                | `#6B331F`   | Vivid Ubuntu Orange, slightly lighter than R3 (outward gradient) |
-| R4 Leaf — Management plane, access| 170                | 234                | `#5C2347`   | Vivid Aubergine, slightly lighter than R3  |
-| R4 Leaf — Border (`leaf_role: "border"`) | 170         | 234                | `#1F4725`   | Dedicated vivid Ubuntu Sage tint — distinct from both planes |
-| R5 Rack (neutral)                 | 252                | 304                | `#3A3835`   | Mid neutral                                |
-| R6 Server (neutral)               | 322                | 420                | `#454340`   | Lightest neutral — outermost, maximizes arc surface for labels |
+| R2 Superspine — Data plane        | 100                | 136                | `#4A2213`   | Ubuntu Orange, deeper tint than R3 (innermost routing ring) |
+| R2 Superspine — Management plane  | 100                | 136                | `#3D1730`   | Aubergine, deeper tint than R3            |
+| R3 Spine — Data plane             | 154                | 206                | `#572A19`   | Vivid Ubuntu Orange tint over dark base    |
+| R3 Spine — Management plane       | 154                | 206                | `#4A1C39`   | Vivid Aubergine tint over dark base        |
+| R4 Leaf — Data plane, access      | 224                | 288                | `#6B331F`   | Vivid Ubuntu Orange, slightly lighter than R3 (outward gradient) |
+| R4 Leaf — Management plane, access| 224                | 288                | `#5C2347`   | Vivid Aubergine, slightly lighter than R3  |
+| R4 Leaf — Border (`leaf_role: "border"`) | 224        | 288                | `#1F4725`   | Dedicated vivid Ubuntu Sage tint — distinct from both planes |
+| R5 Rack (neutral)                 | 306                | 358                | `#3A3835`   | Mid neutral                                |
+| R6 Server (neutral)               | 376                | 420                | `#454340`   | Lightest neutral — outermost, maximizes arc surface for labels |
 
-Inter-ring gaps (18–20 px each) are left clear — link arcs float at each gap's midpoint radius (subject to the
-per-lane offset in §6.6). Radii above are the Option C reference values; other options reuse the same fill colors per
-ring/role but may need different radii if fewer rings are populated (§3.3) and available chart radius is
-redistributed. R2 (Super-spine, populated only in rare Option C cases and in Option D) follows the same Data/
-Management plane-tint rule as R3.
+Inter-ring gaps (18 px each) are left clear — link arcs float at each gap's midpoint radius (subject to the
+per-lane offset in §6.6). **The radii above are Option D reference values** (6 rings; computed from the
+`RING_BAND_WEIGHT` proportions in §5.3 and the 18 px gap). Other options will have different absolute radii since
+the same proportional weights are redistributed across fewer rings, but fill colors per ring/role are identical
+across all options. For reference: Option C (5 rings, R2 absent) produces R1=38–82, R3=100–152, R4=170–234,
+R5=252–304, R6=322–420.
 
 ### 11.4 Legend and controls
 
@@ -692,8 +739,13 @@ Management plane-tint rule as R3.
   color (§6.2) — Data uses Ubuntu Orange, Management uses Aubergine, Containment uses warm grey, Peer Adjacency uses
   Ubuntu Yellow/gold. The Peer Adjacency button is hidden for options that contain no peer-adjacency links. Behavior
   and default state are specified in §8.2 (not restated here).
-- **Ring depth legend** (below chart): coloured chips matching ring/node arc fills (§11.3), connected by `→` arrows,
-  reading Pod → Spine → Leaf → Rack → Server. Static, not interactive.
+- **Ring depth legend** (below chart): coloured chips matching ring/node arc fills (§11.3), connected by `→` arrows.
+  The legend is **built dynamically** from the populated rings of the active option and the per-option ring-name
+  overrides (§3.3 / `meta.ringNames`). For Option C it reads "Pod → Spine → Leaf → Rack → Server"; for Option D
+  it reads "Pod → Superspine → Spine → Leaf → Rack → Server"; for Options A/B it reads "TOR → Rack → Server".
+  An additional "Border Leaf" chip (using the Sage fill) is appended for any option that contains R4 border-leaf
+  nodes, separated by a · rather than a → since it is a role within R4, not a separate ring depth. Static within
+  an option; redrawn on option switch.
 - **Chart title:** "Datacenter Network Topology", with an Ubuntu-Orange underline accent, set in the primary text
   color (§11.1). Subtitle: "Option C · Standard Leaf-Spine Pod · Radial Layered Graph", in the secondary/muted text
   color.
