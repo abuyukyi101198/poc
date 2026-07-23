@@ -929,6 +929,12 @@ no new sizing model is introduced.
   - **Fallback:** if a fixture has no clean per-pod IP block (or blocks are shared/non-partitioning across pods),
     columns fall back to even ordinal spacing labelled by pod name — the same graceful-degradation posture used
     elsewhere in this spec for optional/absent attributes (e.g. §7.7's empty `rack_controller_ids`).
+  - **Column CIDR labels:** each pod column displays its `metadata.cidr` value as a short text label drawn in a
+    reserved label area above the chart. Labels are rotated −45° so they fit even very narrow columns; the right
+    end of each label is anchored at the column's horizontal centre and offset upward into the label area so the
+    text fans diagonally down-left toward the arm boundary without overlapping the chart content. Text uses the
+    secondary/muted colour token (`--text-secondary`, §11.1) in Ubuntu Mono at 9 px. Pointer events are disabled
+    so the transparent per-column hit targets (§12.10) remain the sole interactive surface.
 - **y-axis — hierarchy depth, mirrored by plane around a y = 0 baseline.** Unlike Disc View's inner→outer radius
   mapping, Stack View splits the routing tiers into two vertical arms extending away from a shared baseline: an
   upward (+y) arm and a downward (−y) arm, assigned by network plane per §12.3. This is the "population pyramid"
@@ -1035,21 +1041,38 @@ Clicking anywhere within a given pod's column (either arm, or its Rack-cap half-
 filtered to that pod, reusing the existing drill/filter behavior of §8.5. The transition is a crossfade/zoom rather
 than a literal 3D rotation, consistent with using two 2D views instead of a true 3D renderer (§12.1).
 
-### 12.11 Hover and tooltip reuse
+### 12.11 Hover and column-level interaction
 
-Hovering any band segment in Stack View reuses the existing tooltip panel content model (§8.6) unchanged — the
-same per-node sections (MAAS Control Plane, Availability Zone, categorization footer, metadata) apply, since the
-underlying node schema (§9.1) is identical between the two views; only the geometry differs.
+Hovering a pod column in Stack View shows a dedicated **column-level pod summary tooltip** — a separate panel
+(`.stack-tooltip-panel`) entirely distinct from the per-node §8.6 detail panel (`.tooltip-panel`) — summarising the
+hovered pod's aggregate infrastructure at a glance: total server/rack count, per-plane spine and leaf counts
+(including border leaf count), and an AZ rack breakdown with colour swatches matching §7.8's accent palette. This
+is a column-level aggregate view, not a per-node reuse of §8.6's content model; the two panels share visual styling
+(§8.6's panel surface and typography tokens) but are otherwise independent.
 
-**Lineage-highlight hover behavior (§8.3) is also implemented**, reusing the Disc View's own ancestor-BFS logic
-unchanged (traversal only, not the plane-toggle wiring, which stays bound to Disc View's root — see
-implementation note below). This supersedes an earlier draft of this section, which described lineage-highlight
-as out of scope for Stack View; in practice it remains valuable here too, since a hovered rack's leaf → spine →
-super-spine → pod ancestry is genuinely useful to trace even though those relationships are also visible via
-spatial nesting.
+**Column-level opacity dimming (hover focus):** while a pod column is hovered, every box whose pod does not match
+the hovered column fades to a reduced `HOVER_DIM` opacity; if a pod is also actively selected (§12.10), the
+non-selected columns fade to the deeper `DIM_OPACITY` value instead, so the selection/hover contrast remains
+legible during hover.
 
-**Implementation status:** tooltip reuse and lineage-highlight hover (this section) are implemented, sharing
-`interaction.js`/`tooltip.js` verbatim with Disc View. §12.10's click-to-drill-into-Disc-View transition is **not**
-yet implemented — clicking a Stack View segment currently has no effect beyond the hover states described above.
+**Per-node §8.6 tooltip and §8.3 BFS lineage-highlight are designed for but not yet active.** Every stack box
+carries the full raw fixture node datum in its D3 binding — the same object shape used by Disc View's `.node-arc`
+elements — precisely so that `initTooltip()` and `initLineageHover()` from `tooltip.js`/`interaction.js` could be
+wired up on the stack SVG root without modification. This wiring is not yet performed; the column-level dimming
+and summary tooltip described above are the current hover affordances. Enabling per-node lineage highlight would
+require calling `initLineageHover(stackRoot, layoutNodes, links)` after rendering (skipping the full
+`initInteraction()` which also re-wires the page-global plane-toggle buttons).
+
+**Implementation status:**
+
+- **Column-level pod selection (§12.10) IS implemented.** Clicking a pod column calls the `onSelectPod` callback;
+  `index.html` re-renders Disc View filtered to that pod. On Option D load, the first pod (sorted by CIDR) is
+  auto-selected so Disc View always shows a complete single-pod topology. Deselection is not permitted — once a
+  pod is selected it remains selected until a different pod is clicked.
+- **Column-level pod-summary tooltip IS implemented** (`.stack-tooltip-panel`, separate from §8.6's panel).
+- **Per-node §8.6 tooltip on individual stack boxes is NOT yet wired** — `initTooltip()` is not called on the
+  stack SVG root.
+- **Per-node BFS lineage-highlight (§8.3) is NOT yet active on stack boxes** — `initLineageHover()` is not
+  called; the current hover behavior is column-level opacity dimming only.
 
 

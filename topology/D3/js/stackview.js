@@ -6,9 +6,13 @@
  * stack (Superspine/Spine/Leaf), bookended by two unifying, non-plane-
  * specific bands (Pod at the y=0 baseline, Rack as the outer cap). No
  * link/edge lines are drawn anywhere (§12.8) — every relationship is
- * implied purely by containment/x-nesting. No permanent text labels are
- * drawn (node identity comes from the hover tooltip panel, §12.11) — this
- * is a single dense visual, not an annotated chart.
+ * implied purely by containment/x-nesting.
+ *
+ * CIDR column labels (§12.2): each pod column displays its CIDR value as a
+ * short text label above the chart, rotated −45° and offset upward into the
+ * LABEL_AREA so the text fans down-left toward the arm boundary without
+ * overlapping chart content. Pointer events are disabled on these labels so
+ * the transparent column hit-targets (§12.10) remain the sole click surface.
  *
  * Sizing: rendered at the SAME width as the Disc View's SVG canvas
  * (layout.js CONFIG.width) and at a deliberately short, compressed height —
@@ -21,13 +25,15 @@
  * infrastructure are drawn, separated by a small fixed gap, so the chart
  * doesn't waste most of its width on empty address ranges.
  *
- * §12.11 Hover/tooltip: every box is bound to a datum that IS the raw fixture
- * node (spread directly, not nested) precisely so that interaction.js's
- * initLineageHover() and tooltip.js's initTooltip() — both written for Disc
- * View's `.node-arc` elements — work here completely unmodified. Only
- * initLineageHover() is used (not the full initInteraction()), since the
- * latter also re-wires the page-global plane-toggle buttons, which must
- * stay bound to Disc View's root only.
+ * §12.11 Hover/tooltip: every box carries the full raw fixture node datum in
+ * its D3 binding (spread directly, not nested) — the same object shape as
+ * Disc View's `.node-arc` elements — so that interaction.js's
+ * initLineageHover() and tooltip.js's initTooltip() could be wired up on the
+ * stack SVG root without modification. HOWEVER, neither is currently called:
+ * the current hover affordances are (a) column-level opacity dimming via
+ * applyOpacities() and (b) a dedicated per-column pod-summary tooltip
+ * (§12.11). Per-node BFS lineage highlight and the §8.6 per-node tooltip are
+ * not yet active.
  *
  * Only meaningful for fixtures with 2+ R1 Pod nodes carrying
  * `metadata.cidr` (currently: Option D only — wired up in index.html).
@@ -45,9 +51,6 @@
  *   - §12.6's "as evenly as possible" rack weight-split is implemented as a
  *     literal 50/50 half-height split. AZ-contiguity grouping (the other
  *     half of §12.6) IS implemented via sort order before x-subdivision.
- *   - §12.11's lineage-highlight is now implemented (this revision) — the
- *     spec text describing it as deferred/out-of-scope is stale and should
- *     be updated to match.
  */
 
 import * as d3 from 'd3';
@@ -72,8 +75,9 @@ const THICKNESS = {
   rackMax:    10,   // max half-height for the heaviest rack (§12.6)
 };
 
-// SS_START=4, SP_START=9, LF_START=14, RK_START=19, ARM_HEIGHT=29 → HEIGHT=120px
-// This value is mirrored in style.css (#stackview { height: 90px } ≈ HEIGHT×0.75).
+// SS_START=4, SP_START=9, LF_START=14, RK_START=19, ARM_HEIGHT=29
+// HEIGHT = ARM_HEIGHT×2 + 6 + LABEL_AREA = 58 + 6 + 56 = 120px
+// Mirrored in style.css (#stackview { height: 90px } ≈ HEIGHT×0.75 at max-width 705px).
 
 // Cumulative offsets from the y=0 baseline, one arm — computed once since
 // THICKNESS is fixed regardless of fixture content.
