@@ -29,7 +29,7 @@ const MIN_LABEL_DEG = {
   R3: 3,    // Spines: large arcs, always visible
   R4: 3,    // Leaves
   R5: 4,    // Racks
-  R6: 6,    // Servers: small arcs — only label if there is room
+  R6: 2,    // Servers: dynamic font sizing allows smaller threshold
 };
 
 // Default human-readable ring names (can be overridden per-option via meta.ringNames)
@@ -297,15 +297,24 @@ function arcLabelTransform(node) {
 
 /**
  * arcLabelFontSize — smaller text for denser outer rings.
+ * R6 (servers) scale dynamically based on arc angular span to fit within narrow arcs.
  */
 function arcLabelFontSize(node) {
+  if (node.ring === 'R6') {
+    // Dynamic font sizing for servers based on arc span
+    const spanDeg = (node.endAngle - node.startAngle) * 180 / Math.PI;
+    // Scale font size: wider arcs get larger text, narrower arcs get smaller
+    // Max 6px at ~8+ degrees, min 3.5px at narrow spans
+    const dynamicSize = Math.max(3.5, Math.min(6, spanDeg * 0.7));
+    return `${dynamicSize.toFixed(1)}px`;
+  }
+
   switch (node.ring) {
     case 'R1': return '10px';
     case 'R2': return '9px';
     case 'R3': return '9px';
     case 'R4': return '8.5px';
     case 'R5': return '8px';
-    case 'R6': return '7px';
     default:   return '8px';
   }
 }

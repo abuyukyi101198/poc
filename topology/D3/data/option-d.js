@@ -3,42 +3,39 @@
  *
  * Companion to: radial-layered-topology-viz-spec.md §3.3 Option D row.
  *
+ * Node ID convention: node-type-NNN (zero-padded 3 digits, sequential within type).
+ *   Superspines: superspine-001/002 (data), superspine-003/004 (mgmt)
+ *   Spines:      spine-001/002/003 (data), spine-004/005/006 (mgmt)
+ *   Leaves:      leaf-001…006 (data access), leaf-007…012 (mgmt access)
+ *   Border:      border-leaf-001/002
+ *   Racks:       rack-001…010
+ *   Servers:     server-001…006 (rack-001), 007…011 (rack-002), 012…019 (rack-003),
+ *                020…023 (rack-004), 024…030 (rack-005), 031…035 (rack-006),
+ *                036…044 (rack-007), 045…050 (rack-008), 051…060 (rack-009),
+ *                061…068 (rack-010)
+ *
  * Structure (canonical §4.1/§4.3 ring assignment — Pod is root, Border Leaf
  * is an ordinary R4 sibling of data/mgmt leaves, exactly as in Option C):
- *   - 1 Pod (ring R1, root — same role as Option C)
- *   - 4 Super-spines (ring R2 — 2 data, 2 mgmt; the inter-pod/datacenter core
- *     layer absent in Option C, connecting spines upward to the pod root and
- *     outward to border leaves)
- *   - 6 Spines (ring R3 — 3 data, 3 mgmt; one more per plane than Option C to
- *     visually distinguish the larger-scale repeated Spine 1..m pattern)
- *   - 10 Leaves (ring R4 — 4 data access, 4 mgmt access, 2 border leaves;
- *     border leaves are ordinary R4 members distinguished by leaf_role:"border",
- *     per spec §4.3/§7.5 — same placement as Option C)
- *   - 6 Racks (ring R5) / 35 Servers (ring R6) — same dual/single-leaf rack
- *     shape, weights, AZ and MAAS-controller flavor as Option C's fixture,
- *     renamed with a -d suffix to avoid id collisions.
+ *   - 1 Pod (ring R1, root)
+ *   - 4 Super-spines (ring R2 — 2 data, 2 mgmt)
+ *   - 6 Spines (ring R3 — 3 data, 3 mgmt)
+ *   - 14 Leaves (ring R4 — 6 data access, 6 mgmt access, 2 border leaves)
+ *   - 10 Racks (ring R5) / 68 Servers (ring R6)
  *
- * Option D border leaves follow the same link pattern as Option C: they peer
- * with their adjacent inner ring (R3 Spine) only, via the Spine→BorderLeaf
- * full-mesh links below.  The super-spine tier (R2) connects to spines (R3),
- * not directly to border leaves — there is no R2→R4 skip-ring link.
- *
- * Weight convention (matches Option C precedent, spec §5.2): every rung
- * above the rack level carries the FULL deduplicated downstream server count
- * (35) — e.g. all Super-spines and the Pod carry weight 35.  Border leaves
- * serve no racks directly (external/WAN/DCI role) so they carry a nominal
- * weight of 2, identical to Option C.
+ * Weight convention (spec §5.2): every rung above the rack level carries the
+ * FULL deduplicated downstream server count (68). Border leaves carry nominal
+ * weight 2 (no racks served directly).
  */
 
-const RACK_WEIGHTS = { "rack-d1": 6, "rack-d2": 5, "rack-d3": 8, "rack-d4": 4, "rack-d5": 7, "rack-d6": 5 };
+const RACK_WEIGHTS = { "rack-001": 6, "rack-002": 5, "rack-003": 8, "rack-004": 4, "rack-005": 7, "rack-006": 5, "rack-007": 9, "rack-008": 6, "rack-009": 10, "rack-010": 8 };
 const TOTAL_SERVERS = Object.values(RACK_WEIGHTS).reduce((a, b) => a + b, 0); // 35
 
 export const nodes = [
-  // ---- R1 Pod (root — same role as Option C) ----
+  // ---- R1 Pod (root) ----
   {
-    id: "pod-d1",
+    id: "pod-001",
     ring: "R1",
-    label: "Pod 1",
+    label: "Pod-001",
     weight: TOTAL_SERVERS,
     plane: "shared",
     leaf_role: "n/a",
@@ -49,222 +46,333 @@ export const nodes = [
     metadata: { role: "pod", description: "Single large-scale leaf-spine pod within a multi-pod datacenter (Option D)." }
   },
 
-  // ---- R2 Super-spine (datacenter core / inter-pod layer — absent in Option C) ----
-  { id: "superspine-data-1", ring: "R2", label: "Data Superspine 1", weight: TOTAL_SERVERS, plane: "data", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { role: "superspine" } },
-  { id: "superspine-data-2", ring: "R2", label: "Data Superspine 2", weight: TOTAL_SERVERS, plane: "data", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { role: "superspine" } },
-  { id: "superspine-mgmt-1", ring: "R2", label: "Mgmt Superspine 1", weight: TOTAL_SERVERS, plane: "mgmt", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { role: "superspine" } },
-  { id: "superspine-mgmt-2", ring: "R2", label: "Mgmt Superspine 2", weight: TOTAL_SERVERS, plane: "mgmt", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { role: "superspine" } },
+  // ---- R2 Super-spine ----
+  { id: "superspine-001", ring: "R2", label: "Superspine-001", weight: TOTAL_SERVERS, plane: "data", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { role: "superspine" } },
+  { id: "superspine-002", ring: "R2", label: "Superspine-002", weight: TOTAL_SERVERS, plane: "data", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { role: "superspine" } },
+  { id: "superspine-003", ring: "R2", label: "Superspine-003", weight: TOTAL_SERVERS, plane: "mgmt", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { role: "superspine" } },
+  { id: "superspine-004", ring: "R2", label: "Superspine-004", weight: TOTAL_SERVERS, plane: "mgmt", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { role: "superspine" } },
 
-  // ---- R3 Spine (3 per plane — one more than Option C to show scale) ----
-  { id: "spine-data-d1", ring: "R3", label: "Data Spine 1", weight: TOTAL_SERVERS, plane: "data", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { role: "spine" } },
-  { id: "spine-data-d2", ring: "R3", label: "Data Spine 2", weight: TOTAL_SERVERS, plane: "data", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { role: "spine" } },
-  { id: "spine-data-d3", ring: "R3", label: "Data Spine 3", weight: TOTAL_SERVERS, plane: "data", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { role: "spine" } },
-  { id: "spine-mgmt-d1", ring: "R3", label: "Mgmt Spine 1", weight: TOTAL_SERVERS, plane: "mgmt", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { role: "spine" } },
-  { id: "spine-mgmt-d2", ring: "R3", label: "Mgmt Spine 2", weight: TOTAL_SERVERS, plane: "mgmt", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { role: "spine" } },
-  { id: "spine-mgmt-d3", ring: "R3", label: "Mgmt Spine 3", weight: TOTAL_SERVERS, plane: "mgmt", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { role: "spine" } },
+  // ---- R3 Spine (3 per plane) ----
+  { id: "spine-001", ring: "R3", label: "Spine-001", weight: TOTAL_SERVERS, plane: "data", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { role: "spine" } },
+  { id: "spine-002", ring: "R3", label: "Spine-002", weight: TOTAL_SERVERS, plane: "data", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { role: "spine" } },
+  { id: "spine-003", ring: "R3", label: "Spine-003", weight: TOTAL_SERVERS, plane: "data", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { role: "spine" } },
+  { id: "spine-004", ring: "R3", label: "Spine-004", weight: TOTAL_SERVERS, plane: "mgmt", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { role: "spine" } },
+  { id: "spine-005", ring: "R3", label: "Spine-005", weight: TOTAL_SERVERS, plane: "mgmt", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { role: "spine" } },
+  { id: "spine-006", ring: "R3", label: "Spine-006", weight: TOTAL_SERVERS, plane: "mgmt", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { role: "spine" } },
 
   // ---- R4 Leaf — data & management access leaves ----
-  { id: "leaf-data-d1", ring: "R4", label: "Data Leaf 1", weight: 11, plane: "data", leaf_role: "access", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { role: "leaf", serves_racks: ["rack-d1", "rack-d2"] } },
-  { id: "leaf-data-d2", ring: "R4", label: "Data Leaf 2", weight: 16, plane: "data", leaf_role: "access", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { role: "leaf", serves_racks: ["rack-d1", "rack-d2", "rack-d6"] } },
-  { id: "leaf-data-d3", ring: "R4", label: "Data Leaf 3", weight: 12, plane: "data", leaf_role: "access", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { role: "leaf", serves_racks: ["rack-d3", "rack-d4"] } },
-  { id: "leaf-data-d4", ring: "R4", label: "Data Leaf 4", weight: 15, plane: "data", leaf_role: "access", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { role: "leaf", serves_racks: ["rack-d3", "rack-d5"] } },
-  { id: "leaf-mgmt-d1", ring: "R4", label: "Mgmt Leaf 1", weight: 11, plane: "mgmt", leaf_role: "access", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { role: "leaf", serves_racks: ["rack-d1", "rack-d2"] } },
-  { id: "leaf-mgmt-d2", ring: "R4", label: "Mgmt Leaf 2", weight: 16, plane: "mgmt", leaf_role: "access", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { role: "leaf", serves_racks: ["rack-d1", "rack-d2", "rack-d6"] } },
-  { id: "leaf-mgmt-d3", ring: "R4", label: "Mgmt Leaf 3", weight: 12, plane: "mgmt", leaf_role: "access", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { role: "leaf", serves_racks: ["rack-d3", "rack-d4"] } },
-  { id: "leaf-mgmt-d4", ring: "R4", label: "Mgmt Leaf 4", weight: 15, plane: "mgmt", leaf_role: "access", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { role: "leaf", serves_racks: ["rack-d3", "rack-d5"] } },
+  { id: "leaf-001", ring: "R4", label: "Leaf-001", weight: 11, plane: "data", leaf_role: "access", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { role: "leaf", serves_racks: ["rack-001", "rack-002"] } },
+  { id: "leaf-002", ring: "R4", label: "Leaf-002", weight: 16, plane: "data", leaf_role: "access", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { role: "leaf", serves_racks: ["rack-001", "rack-002", "rack-006"] } },
+  { id: "leaf-003", ring: "R4", label: "Leaf-003", weight: 18, plane: "data", leaf_role: "access", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { role: "leaf", serves_racks: ["rack-003", "rack-004", "rack-009"] } },
+  { id: "leaf-004", ring: "R4", label: "Leaf-004", weight: 23, plane: "data", leaf_role: "access", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { role: "leaf", serves_racks: ["rack-003", "rack-005", "rack-010"] } },
+  { id: "leaf-005", ring: "R4", label: "Leaf-005", weight: 9, plane: "data", leaf_role: "access", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { role: "leaf", serves_racks: ["rack-007"] } },
+  { id: "leaf-006", ring: "R4", label: "Leaf-006", weight: 6, plane: "data", leaf_role: "access", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { role: "leaf", serves_racks: ["rack-008"] } },
+  { id: "leaf-007", ring: "R4", label: "Leaf-007", weight: 11, plane: "mgmt", leaf_role: "access", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { role: "leaf", serves_racks: ["rack-001", "rack-002"] } },
+  { id: "leaf-008", ring: "R4", label: "Leaf-008", weight: 16, plane: "mgmt", leaf_role: "access", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { role: "leaf", serves_racks: ["rack-001", "rack-002", "rack-006"] } },
+  { id: "leaf-009", ring: "R4", label: "Leaf-009", weight: 18, plane: "mgmt", leaf_role: "access", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { role: "leaf", serves_racks: ["rack-003", "rack-004", "rack-009"] } },
+  { id: "leaf-010", ring: "R4", label: "Leaf-010", weight: 23, plane: "mgmt", leaf_role: "access", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { role: "leaf", serves_racks: ["rack-003", "rack-005", "rack-010"] } },
+  { id: "leaf-011", ring: "R4", label: "Leaf-011", weight: 9, plane: "mgmt", leaf_role: "access", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { role: "leaf", serves_racks: ["rack-007"] } },
+  { id: "leaf-012", ring: "R4", label: "Leaf-012", weight: 6, plane: "mgmt", leaf_role: "access", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { role: "leaf", serves_racks: ["rack-008"] } },
 
   // ---- R4 Leaf — border leaves (ordinary R4 members, spec §4.3/§7.5) ----
-  // In Option D these peer upward to spines (R3), exactly as in Option C.
-  // The super-spine tier (R2) does NOT connect directly to border leaves.
-  { id: "border-leaf-d1", ring: "R4", label: "Border Leaf 1", weight: 2, plane: "data", leaf_role: "border", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { role: "border_leaf", description: "External/WAN/DCI/service-insertion gateway — ordinary R4 leaf (spec §7.5), peers with R3 spines only." } },
-  { id: "border-leaf-d2", ring: "R4", label: "Border Leaf 2", weight: 2, plane: "data", leaf_role: "border", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { role: "border_leaf", description: "External/WAN/DCI/service-insertion gateway — ordinary R4 leaf (spec §7.5), peers with R3 spines only." } },
+  { id: "border-leaf-001", ring: "R4", label: "Border-Leaf-001", weight: 2, plane: "data", leaf_role: "border", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { role: "border_leaf", description: "External/WAN/DCI/service-insertion gateway — ordinary R4 leaf (spec §7.5), peers with R3 spines only." } },
+  { id: "border-leaf-002", ring: "R4", label: "Border-Leaf-002", weight: 2, plane: "data", leaf_role: "border", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { role: "border_leaf", description: "External/WAN/DCI/service-insertion gateway — ordinary R4 leaf (spec §7.5), peers with R3 spines only." } },
 
-  // ---- R5 Rack (same shape/weights/AZ/controller flavor as Option C) ----
-  { id: "rack-d1", ring: "R5", label: "Rack 1", weight: 6, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "redundant", rack_controller_ids: ["rc-d1a", "rc-d1b"], availability_zone: "az-1", metadata: { leaf_count: 2, data_leaves: ["leaf-data-d1", "leaf-data-d2"], mgmt_leaves: ["leaf-mgmt-d1", "leaf-mgmt-d2"] } },
-  { id: "rack-d2", ring: "R5", label: "Rack 2", weight: 5, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "redundant", rack_controller_ids: ["rc-d1a", "rc-d1b"], availability_zone: "az-1", metadata: { leaf_count: 2, data_leaves: ["leaf-data-d1", "leaf-data-d2"], mgmt_leaves: ["leaf-mgmt-d1", "leaf-mgmt-d2"] } },
-  { id: "rack-d3", ring: "R5", label: "Rack 3", weight: 8, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "redundant", rack_controller_ids: ["rc-d3a", "rc-d3b"], availability_zone: "az-2", metadata: { leaf_count: 2, data_leaves: ["leaf-data-d3", "leaf-data-d4"], mgmt_leaves: ["leaf-mgmt-d3", "leaf-mgmt-d4"], note: "Contains GPU/accelerator nodes." } },
-  { id: "rack-d4", ring: "R5", label: "Rack 4", weight: 4, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "spof", rack_controller_ids: ["rc-d3a", "rc-d3b"], availability_zone: "az-2", metadata: { leaf_count: 1, data_leaves: ["leaf-data-d3"], mgmt_leaves: ["leaf-mgmt-d3"], note: "Single-leaf: leaf failure == rack failure." } },
-  { id: "rack-d5", ring: "R5", label: "Rack 5", weight: 7, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "spof", rack_controller_ids: ["rc-d5a", "rc-d5b"], availability_zone: "az-3", metadata: { leaf_count: 1, data_leaves: ["leaf-data-d4"], mgmt_leaves: ["leaf-mgmt-d4"], note: "Single-leaf: leaf failure == rack failure." } },
-  { id: "rack-d6", ring: "R5", label: "Rack 6", weight: 5, plane: "shared", leaf_role: "n/a", trust_tier: "tenant", failure_domain_role: "spof", rack_controller_ids: ["rc-d1a"], availability_zone: "az-4", metadata: { leaf_count: 1, data_leaves: ["leaf-data-d2"], mgmt_leaves: ["leaf-mgmt-d2"], note: "Single-leaf, tenant-controlled bare-metal servers, single (non-redundant) rack controller." } },
+  // ---- R5 Rack ----
+  { id: "rack-001", ring: "R5", label: "Rack-001", weight: 6, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "redundant", rack_controller_ids: ["rc-001", "rc-002"], availability_zone: "az-1", metadata: { leaf_count: 2, data_leaves: ["leaf-001", "leaf-002"], mgmt_leaves: ["leaf-007", "leaf-008"] } },
+  { id: "rack-002", ring: "R5", label: "Rack-002", weight: 5, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "redundant", rack_controller_ids: ["rc-001", "rc-002"], availability_zone: "az-1", metadata: { leaf_count: 2, data_leaves: ["leaf-001", "leaf-002"], mgmt_leaves: ["leaf-007", "leaf-008"] } },
+  { id: "rack-003", ring: "R5", label: "Rack-003", weight: 8, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "redundant", rack_controller_ids: ["rc-003", "rc-004"], availability_zone: "az-2", metadata: { leaf_count: 2, data_leaves: ["leaf-003", "leaf-004"], mgmt_leaves: ["leaf-009", "leaf-010"], note: "Contains GPU/accelerator nodes." } },
+  { id: "rack-004", ring: "R5", label: "Rack-004", weight: 4, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "spof",      rack_controller_ids: ["rc-003", "rc-004"], availability_zone: "az-2", metadata: { leaf_count: 1, data_leaves: ["leaf-003"], mgmt_leaves: ["leaf-009"], note: "Single-leaf: leaf failure == rack failure." } },
+  { id: "rack-005", ring: "R5", label: "Rack-005", weight: 7, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "spof",      rack_controller_ids: ["rc-005", "rc-006"], availability_zone: "az-3", metadata: { leaf_count: 1, data_leaves: ["leaf-004"], mgmt_leaves: ["leaf-010"], note: "Single-leaf: leaf failure == rack failure." } },
+  { id: "rack-006", ring: "R5", label: "Rack-006", weight: 5, plane: "shared", leaf_role: "n/a", trust_tier: "tenant",   failure_domain_role: "spof",      rack_controller_ids: ["rc-001"],             availability_zone: "az-4", metadata: { leaf_count: 1, data_leaves: ["leaf-002"], mgmt_leaves: ["leaf-008"], note: "Single-leaf, tenant-controlled bare-metal servers, single (non-redundant) rack controller." } },
+  { id: "rack-007", ring: "R5", label: "Rack-007", weight: 9, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "spof",      rack_controller_ids: ["rc-001", "rc-002"], availability_zone: "az-1", metadata: { leaf_count: 1, data_leaves: ["leaf-005"], mgmt_leaves: ["leaf-011"] } },
+  { id: "rack-008", ring: "R5", label: "Rack-008", weight: 6, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "spof",      rack_controller_ids: ["rc-007", "rc-008"], availability_zone: "az-2", metadata: { leaf_count: 1, data_leaves: ["leaf-006"], mgmt_leaves: ["leaf-012"] } },
+  { id: "rack-009", ring: "R5", label: "Rack-009", weight: 10, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "redundant", rack_controller_ids: ["rc-003", "rc-004"], availability_zone: "az-2", metadata: { leaf_count: 2, data_leaves: ["leaf-003"], mgmt_leaves: ["leaf-009"], note: "High-density compute rack." } },
+  { id: "rack-010", ring: "R5", label: "Rack-010", weight: 8, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "redundant", rack_controller_ids: ["rc-005", "rc-006"], availability_zone: "az-3", metadata: { leaf_count: 2, data_leaves: ["leaf-004"], mgmt_leaves: ["leaf-010"] } },
 
-  // ---- R6 Server ----
-  { id: "server-d1-01", ring: "R6", label: "Rack1-Srv01", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-d1" } },
-  { id: "server-d1-02", ring: "R6", label: "Rack1-Srv02", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-d1" } },
-  { id: "server-d1-03", ring: "R6", label: "Rack1-Srv03", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-d1" } },
-  { id: "server-d1-04", ring: "R6", label: "Rack1-Srv04", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-d1" } },
-  { id: "server-d1-05", ring: "R6", label: "Rack1-Srv05", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-d1" } },
-  { id: "server-d1-06", ring: "R6", label: "Rack1-Srv06", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "az-2", metadata: { rack: "rack-d1", note: "AZ override — reassigned out of the rack's default az-1 (spec §7.8)." } },
+  // ---- R6 Server — rack-001 (6 servers) ----
+  { id: "server-001", ring: "R6", label: "Srv-001", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a",  metadata: { rack: "rack-001" } },
+  { id: "server-002", ring: "R6", label: "Srv-002", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a",  metadata: { rack: "rack-001" } },
+  { id: "server-003", ring: "R6", label: "Srv-003", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a",  metadata: { rack: "rack-001" } },
+  { id: "server-004", ring: "R6", label: "Srv-004", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a",  metadata: { rack: "rack-001" } },
+  { id: "server-005", ring: "R6", label: "Srv-005", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a",  metadata: { rack: "rack-001" } },
+  { id: "server-006", ring: "R6", label: "Srv-006", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "az-2", metadata: { rack: "rack-001", note: "AZ override — reassigned out of the rack's default az-1 (spec §7.8)." } },
 
-  { id: "server-d2-01", ring: "R6", label: "Rack2-Srv01", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-d2" } },
-  { id: "server-d2-02", ring: "R6", label: "Rack2-Srv02", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-d2" } },
-  { id: "server-d2-03", ring: "R6", label: "Rack2-Srv03", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-d2" } },
-  { id: "server-d2-04", ring: "R6", label: "Rack2-Srv04", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-d2" } },
-  { id: "server-d2-05", ring: "R6", label: "Rack2-Srv05", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-d2" } },
+  // ---- R6 Server — rack-002 (5 servers) ----
+  { id: "server-007", ring: "R6", label: "Srv-007", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-002" } },
+  { id: "server-008", ring: "R6", label: "Srv-008", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-002" } },
+  { id: "server-009", ring: "R6", label: "Srv-009", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "az-3", metadata: { rack: "rack-002", note: "AZ override — reassigned to az-3 from rack's default az-1 (spec §7.8)." } },
+  { id: "server-010", ring: "R6", label: "Srv-010", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-002" } },
+  { id: "server-011", ring: "R6", label: "Srv-011", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-002" } },
 
-  { id: "server-d3-01", ring: "R6", label: "Rack3-Srv01", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-d3" } },
-  { id: "server-d3-02", ring: "R6", label: "Rack3-Srv02", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-d3" } },
-  { id: "server-d3-03", ring: "R6", label: "Rack3-Srv03", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-d3" } },
-  { id: "server-d3-04", ring: "R6", label: "Rack3-Srv04", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-d3" } },
-  { id: "server-d3-05", ring: "R6", label: "Rack3-Srv05", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-d3" } },
-  { id: "server-d3-06", ring: "R6", label: "Rack3-Srv06", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-d3" } },
-  { id: "server-d3-07-gpu", ring: "R6", label: "Rack3-GPU07", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-d3", node_type: "gpu", accelerators: 4 } },
-  { id: "server-d3-08-gpu", ring: "R6", label: "Rack3-GPU08", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-d3", node_type: "gpu", accelerators: 4 } },
+  // ---- R6 Server — rack-003 (8 servers, incl. 2 GPU) ----
+  { id: "server-012", ring: "R6", label: "Srv-012", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-003" } },
+  { id: "server-013", ring: "R6", label: "Srv-013", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-003" } },
+  { id: "server-014", ring: "R6", label: "Srv-014", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-003" } },
+  { id: "server-015", ring: "R6", label: "Srv-015", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-003" } },
+  { id: "server-016", ring: "R6", label: "Srv-016", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-003" } },
+  { id: "server-017", ring: "R6", label: "Srv-017", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-003" } },
+  { id: "server-018", ring: "R6", label: "Srv-018", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-003", node_type: "gpu", accelerators: 4 } },
+  { id: "server-019", ring: "R6", label: "Srv-019", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-003", node_type: "gpu", accelerators: 4 } },
 
-  { id: "server-d4-01", ring: "R6", label: "Rack4-Srv01", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-d4" } },
-  { id: "server-d4-02", ring: "R6", label: "Rack4-Srv02", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-d4" } },
-  { id: "server-d4-03", ring: "R6", label: "Rack4-Srv03", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-d4" } },
-  { id: "server-d4-04", ring: "R6", label: "Rack4-Srv04", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-d4" } },
+  // ---- R6 Server — rack-004 (4 servers) ----
+  { id: "server-020", ring: "R6", label: "Srv-020", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-004" } },
+  { id: "server-021", ring: "R6", label: "Srv-021", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-004" } },
+  { id: "server-022", ring: "R6", label: "Srv-022", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-004" } },
+  { id: "server-023", ring: "R6", label: "Srv-023", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-004" } },
 
-  { id: "server-d5-01", ring: "R6", label: "Rack5-Srv01", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-d5" } },
-  { id: "server-d5-02", ring: "R6", label: "Rack5-Srv02", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-d5" } },
-  { id: "server-d5-03", ring: "R6", label: "Rack5-Srv03", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-d5" } },
-  { id: "server-d5-04", ring: "R6", label: "Rack5-Srv04", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-d5" } },
-  { id: "server-d5-05", ring: "R6", label: "Rack5-Srv05", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-d5" } },
-  { id: "server-d5-06", ring: "R6", label: "Rack5-Srv06", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-d5" } },
-  { id: "server-d5-07", ring: "R6", label: "Rack5-Srv07", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-d5" } },
+  // ---- R6 Server — rack-005 (7 servers) ----
+  { id: "server-024", ring: "R6", label: "Srv-024", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-005" } },
+  { id: "server-025", ring: "R6", label: "Srv-025", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-005" } },
+  { id: "server-026", ring: "R6", label: "Srv-026", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "az-1", metadata: { rack: "rack-005", note: "AZ override — reassigned to az-1 from rack's default az-3 (spec §7.8)." } },
+  { id: "server-027", ring: "R6", label: "Srv-027", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-005" } },
+  { id: "server-028", ring: "R6", label: "Srv-028", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-005" } },
+  { id: "server-029", ring: "R6", label: "Srv-029", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-005" } },
+  { id: "server-030", ring: "R6", label: "Srv-030", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "az-4", metadata: { rack: "rack-005", note: "AZ override — reassigned to az-4 from rack's default az-3 (spec §7.8)." } },
 
-  { id: "server-d6-01", ring: "R6", label: "Rack6-Srv01", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "tenant", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-d6" } },
-  { id: "server-d6-02", ring: "R6", label: "Rack6-Srv02", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "tenant", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-d6" } },
-  { id: "server-d6-03", ring: "R6", label: "Rack6-Srv03", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "tenant", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-d6" } },
-  { id: "server-d6-04", ring: "R6", label: "Rack6-Srv04", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "tenant", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-d6" } },
-  { id: "server-d6-05", ring: "R6", label: "Rack6-Srv05", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "tenant", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-d6" } }
+  // ---- R6 Server — rack-006 (5 servers, tenant) ----
+  { id: "server-031", ring: "R6", label: "Srv-031", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "tenant", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-006" } },
+  { id: "server-032", ring: "R6", label: "Srv-032", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "tenant", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-006" } },
+  { id: "server-033", ring: "R6", label: "Srv-033", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "tenant", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-006" } },
+  { id: "server-034", ring: "R6", label: "Srv-034", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "tenant", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-006" } },
+  { id: "server-035", ring: "R6", label: "Srv-035", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "tenant", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-006" } },
+
+  // ---- R6 Server — rack-007 (9 servers) ----
+  { id: "server-036", ring: "R6", label: "Srv-036", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-007" } },
+  { id: "server-037", ring: "R6", label: "Srv-037", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-007" } },
+  { id: "server-038", ring: "R6", label: "Srv-038", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "az-2", metadata: { rack: "rack-007", note: "AZ override — reassigned to az-2 from rack's default az-1 (spec §7.8)." } },
+  { id: "server-039", ring: "R6", label: "Srv-039", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-007" } },
+  { id: "server-040", ring: "R6", label: "Srv-040", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-007" } },
+  { id: "server-041", ring: "R6", label: "Srv-041", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-007" } },
+  { id: "server-042", ring: "R6", label: "Srv-042", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-007" } },
+  { id: "server-043", ring: "R6", label: "Srv-043", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "az-3", metadata: { rack: "rack-007", note: "AZ override — reassigned to az-3 from rack's default az-1 (spec §7.8)." } },
+  { id: "server-044", ring: "R6", label: "Srv-044", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-007" } },
+
+  // ---- R6 Server — rack-008 (6 servers) ----
+  { id: "server-045", ring: "R6", label: "Srv-045", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-008" } },
+  { id: "server-046", ring: "R6", label: "Srv-046", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-008" } },
+  { id: "server-047", ring: "R6", label: "Srv-047", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-008" } },
+  { id: "server-048", ring: "R6", label: "Srv-048", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-008" } },
+  { id: "server-049", ring: "R6", label: "Srv-049", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-008" } },
+  { id: "server-050", ring: "R6", label: "Srv-050", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-008" } },
+
+  // ---- R6 Server — rack-009 (10 servers, high-density) ----
+  { id: "server-051", ring: "R6", label: "Srv-051", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-009" } },
+  { id: "server-052", ring: "R6", label: "Srv-052", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-009" } },
+  { id: "server-053", ring: "R6", label: "Srv-053", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-009" } },
+  { id: "server-054", ring: "R6", label: "Srv-054", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "az-4", metadata: { rack: "rack-009", note: "AZ override — reassigned to az-4 from rack's default az-2 (spec §7.8)." } },
+  { id: "server-055", ring: "R6", label: "Srv-055", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-009" } },
+  { id: "server-056", ring: "R6", label: "Srv-056", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-009" } },
+  { id: "server-057", ring: "R6", label: "Srv-057", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "az-1", metadata: { rack: "rack-009", note: "AZ override — reassigned to az-1 from rack's default az-2 (spec §7.8)." } },
+  { id: "server-058", ring: "R6", label: "Srv-058", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-009" } },
+  { id: "server-059", ring: "R6", label: "Srv-059", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-009" } },
+  { id: "server-060", ring: "R6", label: "Srv-060", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-009" } },
+
+  // ---- R6 Server — rack-010 (8 servers) ----
+  { id: "server-061", ring: "R6", label: "Srv-061", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-010" } },
+  { id: "server-062", ring: "R6", label: "Srv-062", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-010" } },
+  { id: "server-063", ring: "R6", label: "Srv-063", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-010" } },
+  { id: "server-064", ring: "R6", label: "Srv-064", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-010" } },
+  { id: "server-065", ring: "R6", label: "Srv-065", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-010" } },
+  { id: "server-066", ring: "R6", label: "Srv-066", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-010" } },
+  { id: "server-067", ring: "R6", label: "Srv-067", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-010" } },
+  { id: "server-068", ring: "R6", label: "Srv-068", weight: 1, plane: "shared", leaf_role: "n/a", trust_tier: "operator", failure_domain_role: "n/a", rack_controller_ids: [], availability_zone: "n/a", metadata: { rack: "rack-010" } }
 ];
 
 export const links = [
-  // Pod -> Super-spine (routing_adjacency, both planes — Pod is the R1 root
-  // that anchors the whole pod; super-spines are its direct R2 children)
-  { source: "pod-d1", target: "superspine-data-1", plane: "data", type: "routing_adjacency", weight: 1 },
-  { source: "pod-d1", target: "superspine-data-2", plane: "data", type: "routing_adjacency", weight: 1 },
-  { source: "pod-d1", target: "superspine-mgmt-1", plane: "mgmt", type: "routing_adjacency", weight: 1 },
-  { source: "pod-d1", target: "superspine-mgmt-2", plane: "mgmt", type: "routing_adjacency", weight: 1 },
+  // Pod -> Super-spine
+  { source: "pod-001", target: "superspine-001", plane: "data", type: "routing_adjacency", weight: 1 },
+  { source: "pod-001", target: "superspine-002", plane: "data", type: "routing_adjacency", weight: 1 },
+  { source: "pod-001", target: "superspine-003", plane: "mgmt", type: "routing_adjacency", weight: 1 },
+  { source: "pod-001", target: "superspine-004", plane: "mgmt", type: "routing_adjacency", weight: 1 },
 
-  // Pod -> Rack (containment — same pattern as Option C pod-1 -> rack-*)
-  { source: "pod-d1", target: "rack-d1", plane: "shared", type: "containment", weight: 1 },
-  { source: "pod-d1", target: "rack-d2", plane: "shared", type: "containment", weight: 1 },
-  { source: "pod-d1", target: "rack-d3", plane: "shared", type: "containment", weight: 1 },
-  { source: "pod-d1", target: "rack-d4", plane: "shared", type: "containment", weight: 1 },
-  { source: "pod-d1", target: "rack-d5", plane: "shared", type: "containment", weight: 1 },
-  { source: "pod-d1", target: "rack-d6", plane: "shared", type: "containment", weight: 1 },
+  // Pod -> Rack (containment)
+  { source: "pod-001", target: "rack-001", plane: "shared", type: "containment", weight: 1 },
+  { source: "pod-001", target: "rack-002", plane: "shared", type: "containment", weight: 1 },
+  { source: "pod-001", target: "rack-003", plane: "shared", type: "containment", weight: 1 },
+  { source: "pod-001", target: "rack-004", plane: "shared", type: "containment", weight: 1 },
+  { source: "pod-001", target: "rack-005", plane: "shared", type: "containment", weight: 1 },
+  { source: "pod-001", target: "rack-006", plane: "shared", type: "containment", weight: 1 },
+  { source: "pod-001", target: "rack-007", plane: "shared", type: "containment", weight: 1 },
+  { source: "pod-001", target: "rack-008", plane: "shared", type: "containment", weight: 1 },
+  { source: "pod-001", target: "rack-009", plane: "shared", type: "containment", weight: 1 },
+  { source: "pod-001", target: "rack-010", plane: "shared", type: "containment", weight: 1 },
 
   // Super-spine <-> Spine (full mesh per plane)
-  { source: "superspine-data-1", target: "spine-data-d1", plane: "data", type: "routing_adjacency", weight: 1 },
-  { source: "superspine-data-1", target: "spine-data-d2", plane: "data", type: "routing_adjacency", weight: 1 },
-  { source: "superspine-data-1", target: "spine-data-d3", plane: "data", type: "routing_adjacency", weight: 1 },
-  { source: "superspine-data-2", target: "spine-data-d1", plane: "data", type: "routing_adjacency", weight: 1 },
-  { source: "superspine-data-2", target: "spine-data-d2", plane: "data", type: "routing_adjacency", weight: 1 },
-  { source: "superspine-data-2", target: "spine-data-d3", plane: "data", type: "routing_adjacency", weight: 1 },
-  { source: "superspine-mgmt-1", target: "spine-mgmt-d1", plane: "mgmt", type: "routing_adjacency", weight: 1 },
-  { source: "superspine-mgmt-1", target: "spine-mgmt-d2", plane: "mgmt", type: "routing_adjacency", weight: 1 },
-  { source: "superspine-mgmt-1", target: "spine-mgmt-d3", plane: "mgmt", type: "routing_adjacency", weight: 1 },
-  { source: "superspine-mgmt-2", target: "spine-mgmt-d1", plane: "mgmt", type: "routing_adjacency", weight: 1 },
-  { source: "superspine-mgmt-2", target: "spine-mgmt-d2", plane: "mgmt", type: "routing_adjacency", weight: 1 },
-  { source: "superspine-mgmt-2", target: "spine-mgmt-d3", plane: "mgmt", type: "routing_adjacency", weight: 1 },
-
+  { source: "superspine-001", target: "spine-001", plane: "data", type: "routing_adjacency", weight: 1 },
+  { source: "superspine-001", target: "spine-002", plane: "data", type: "routing_adjacency", weight: 1 },
+  { source: "superspine-001", target: "spine-003", plane: "data", type: "routing_adjacency", weight: 1 },
+  { source: "superspine-002", target: "spine-001", plane: "data", type: "routing_adjacency", weight: 1 },
+  { source: "superspine-002", target: "spine-002", plane: "data", type: "routing_adjacency", weight: 1 },
+  { source: "superspine-002", target: "spine-003", plane: "data", type: "routing_adjacency", weight: 1 },
+  { source: "superspine-003", target: "spine-004", plane: "mgmt", type: "routing_adjacency", weight: 1 },
+  { source: "superspine-003", target: "spine-005", plane: "mgmt", type: "routing_adjacency", weight: 1 },
+  { source: "superspine-003", target: "spine-006", plane: "mgmt", type: "routing_adjacency", weight: 1 },
+  { source: "superspine-004", target: "spine-004", plane: "mgmt", type: "routing_adjacency", weight: 1 },
+  { source: "superspine-004", target: "spine-005", plane: "mgmt", type: "routing_adjacency", weight: 1 },
+  { source: "superspine-004", target: "spine-006", plane: "mgmt", type: "routing_adjacency", weight: 1 },
 
   // Spine <-> Leaf — access leaves (full mesh per plane)
-  { source: "spine-data-d1", target: "leaf-data-d1", plane: "data", type: "routing_adjacency", weight: 1 },
-  { source: "spine-data-d1", target: "leaf-data-d2", plane: "data", type: "routing_adjacency", weight: 1 },
-  { source: "spine-data-d1", target: "leaf-data-d3", plane: "data", type: "routing_adjacency", weight: 1 },
-  { source: "spine-data-d1", target: "leaf-data-d4", plane: "data", type: "routing_adjacency", weight: 1 },
-  { source: "spine-data-d2", target: "leaf-data-d1", plane: "data", type: "routing_adjacency", weight: 1 },
-  { source: "spine-data-d2", target: "leaf-data-d2", plane: "data", type: "routing_adjacency", weight: 1 },
-  { source: "spine-data-d2", target: "leaf-data-d3", plane: "data", type: "routing_adjacency", weight: 1 },
-  { source: "spine-data-d2", target: "leaf-data-d4", plane: "data", type: "routing_adjacency", weight: 1 },
-  { source: "spine-data-d3", target: "leaf-data-d1", plane: "data", type: "routing_adjacency", weight: 1 },
-  { source: "spine-data-d3", target: "leaf-data-d2", plane: "data", type: "routing_adjacency", weight: 1 },
-  { source: "spine-data-d3", target: "leaf-data-d3", plane: "data", type: "routing_adjacency", weight: 1 },
-  { source: "spine-data-d3", target: "leaf-data-d4", plane: "data", type: "routing_adjacency", weight: 1 },
-  { source: "spine-mgmt-d1", target: "leaf-mgmt-d1", plane: "mgmt", type: "routing_adjacency", weight: 1 },
-  { source: "spine-mgmt-d1", target: "leaf-mgmt-d2", plane: "mgmt", type: "routing_adjacency", weight: 1 },
-  { source: "spine-mgmt-d1", target: "leaf-mgmt-d3", plane: "mgmt", type: "routing_adjacency", weight: 1 },
-  { source: "spine-mgmt-d1", target: "leaf-mgmt-d4", plane: "mgmt", type: "routing_adjacency", weight: 1 },
-  { source: "spine-mgmt-d2", target: "leaf-mgmt-d1", plane: "mgmt", type: "routing_adjacency", weight: 1 },
-  { source: "spine-mgmt-d2", target: "leaf-mgmt-d2", plane: "mgmt", type: "routing_adjacency", weight: 1 },
-  { source: "spine-mgmt-d2", target: "leaf-mgmt-d3", plane: "mgmt", type: "routing_adjacency", weight: 1 },
-  { source: "spine-mgmt-d2", target: "leaf-mgmt-d4", plane: "mgmt", type: "routing_adjacency", weight: 1 },
-  { source: "spine-mgmt-d3", target: "leaf-mgmt-d1", plane: "mgmt", type: "routing_adjacency", weight: 1 },
-  { source: "spine-mgmt-d3", target: "leaf-mgmt-d2", plane: "mgmt", type: "routing_adjacency", weight: 1 },
-  { source: "spine-mgmt-d3", target: "leaf-mgmt-d3", plane: "mgmt", type: "routing_adjacency", weight: 1 },
-  { source: "spine-mgmt-d3", target: "leaf-mgmt-d4", plane: "mgmt", type: "routing_adjacency", weight: 1 },
+  { source: "spine-001", target: "leaf-001", plane: "data", type: "routing_adjacency", weight: 1 },
+  { source: "spine-001", target: "leaf-002", plane: "data", type: "routing_adjacency", weight: 1 },
+  { source: "spine-001", target: "leaf-003", plane: "data", type: "routing_adjacency", weight: 1 },
+  { source: "spine-001", target: "leaf-004", plane: "data", type: "routing_adjacency", weight: 1 },
+  { source: "spine-001", target: "leaf-005", plane: "data", type: "routing_adjacency", weight: 1 },
+  { source: "spine-001", target: "leaf-006", plane: "data", type: "routing_adjacency", weight: 1 },
+  { source: "spine-002", target: "leaf-001", plane: "data", type: "routing_adjacency", weight: 1 },
+  { source: "spine-002", target: "leaf-002", plane: "data", type: "routing_adjacency", weight: 1 },
+  { source: "spine-002", target: "leaf-003", plane: "data", type: "routing_adjacency", weight: 1 },
+  { source: "spine-002", target: "leaf-004", plane: "data", type: "routing_adjacency", weight: 1 },
+  { source: "spine-002", target: "leaf-005", plane: "data", type: "routing_adjacency", weight: 1 },
+  { source: "spine-002", target: "leaf-006", plane: "data", type: "routing_adjacency", weight: 1 },
+  { source: "spine-003", target: "leaf-001", plane: "data", type: "routing_adjacency", weight: 1 },
+  { source: "spine-003", target: "leaf-002", plane: "data", type: "routing_adjacency", weight: 1 },
+  { source: "spine-003", target: "leaf-003", plane: "data", type: "routing_adjacency", weight: 1 },
+  { source: "spine-003", target: "leaf-004", plane: "data", type: "routing_adjacency", weight: 1 },
+  { source: "spine-003", target: "leaf-005", plane: "data", type: "routing_adjacency", weight: 1 },
+  { source: "spine-003", target: "leaf-006", plane: "data", type: "routing_adjacency", weight: 1 },
+  { source: "spine-004", target: "leaf-007", plane: "mgmt", type: "routing_adjacency", weight: 1 },
+  { source: "spine-004", target: "leaf-008", plane: "mgmt", type: "routing_adjacency", weight: 1 },
+  { source: "spine-004", target: "leaf-009", plane: "mgmt", type: "routing_adjacency", weight: 1 },
+  { source: "spine-004", target: "leaf-010", plane: "mgmt", type: "routing_adjacency", weight: 1 },
+  { source: "spine-004", target: "leaf-011", plane: "mgmt", type: "routing_adjacency", weight: 1 },
+  { source: "spine-004", target: "leaf-012", plane: "mgmt", type: "routing_adjacency", weight: 1 },
+  { source: "spine-005", target: "leaf-007", plane: "mgmt", type: "routing_adjacency", weight: 1 },
+  { source: "spine-005", target: "leaf-008", plane: "mgmt", type: "routing_adjacency", weight: 1 },
+  { source: "spine-005", target: "leaf-009", plane: "mgmt", type: "routing_adjacency", weight: 1 },
+  { source: "spine-005", target: "leaf-010", plane: "mgmt", type: "routing_adjacency", weight: 1 },
+  { source: "spine-005", target: "leaf-011", plane: "mgmt", type: "routing_adjacency", weight: 1 },
+  { source: "spine-005", target: "leaf-012", plane: "mgmt", type: "routing_adjacency", weight: 1 },
+  { source: "spine-006", target: "leaf-007", plane: "mgmt", type: "routing_adjacency", weight: 1 },
+  { source: "spine-006", target: "leaf-008", plane: "mgmt", type: "routing_adjacency", weight: 1 },
+  { source: "spine-006", target: "leaf-009", plane: "mgmt", type: "routing_adjacency", weight: 1 },
+  { source: "spine-006", target: "leaf-010", plane: "mgmt", type: "routing_adjacency", weight: 1 },
+  { source: "spine-006", target: "leaf-011", plane: "mgmt", type: "routing_adjacency", weight: 1 },
+  { source: "spine-006", target: "leaf-012", plane: "mgmt", type: "routing_adjacency", weight: 1 },
 
-  // Spine <-> Border Leaf (data plane, full mesh — same pattern as Option C)
-  { source: "spine-data-d1", target: "border-leaf-d1", plane: "data", type: "routing_adjacency", weight: 1 },
-  { source: "spine-data-d1", target: "border-leaf-d2", plane: "data", type: "routing_adjacency", weight: 1 },
-  { source: "spine-data-d2", target: "border-leaf-d1", plane: "data", type: "routing_adjacency", weight: 1 },
-  { source: "spine-data-d2", target: "border-leaf-d2", plane: "data", type: "routing_adjacency", weight: 1 },
-  { source: "spine-data-d3", target: "border-leaf-d1", plane: "data", type: "routing_adjacency", weight: 1 },
-  { source: "spine-data-d3", target: "border-leaf-d2", plane: "data", type: "routing_adjacency", weight: 1 },
+  // Spine <-> Border Leaf (data plane, full mesh)
+  { source: "spine-001", target: "border-leaf-001", plane: "data", type: "routing_adjacency", weight: 1 },
+  { source: "spine-001", target: "border-leaf-002", plane: "data", type: "routing_adjacency", weight: 1 },
+  { source: "spine-002", target: "border-leaf-001", plane: "data", type: "routing_adjacency", weight: 1 },
+  { source: "spine-002", target: "border-leaf-002", plane: "data", type: "routing_adjacency", weight: 1 },
+  { source: "spine-003", target: "border-leaf-001", plane: "data", type: "routing_adjacency", weight: 1 },
+  { source: "spine-003", target: "border-leaf-002", plane: "data", type: "routing_adjacency", weight: 1 },
 
-  // Leaf -> Rack (dual-leaf racks 1-3, single-leaf racks 4-6 — same shape as Option C)
-  { source: "leaf-data-d1", target: "rack-d1", plane: "data", type: "routing_adjacency", weight: 1 },
-  { source: "leaf-data-d2", target: "rack-d1", plane: "data", type: "routing_adjacency", weight: 1 },
-  { source: "leaf-data-d1", target: "rack-d2", plane: "data", type: "routing_adjacency", weight: 1 },
-  { source: "leaf-data-d2", target: "rack-d2", plane: "data", type: "routing_adjacency", weight: 1 },
-  { source: "leaf-data-d3", target: "rack-d3", plane: "data", type: "routing_adjacency", weight: 1 },
-  { source: "leaf-data-d4", target: "rack-d3", plane: "data", type: "routing_adjacency", weight: 1 },
-  { source: "leaf-data-d3", target: "rack-d4", plane: "data", type: "routing_adjacency", weight: 1 },
-  { source: "leaf-data-d4", target: "rack-d5", plane: "data", type: "routing_adjacency", weight: 1 },
-  { source: "leaf-data-d2", target: "rack-d6", plane: "data", type: "routing_adjacency", weight: 1 },
-  { source: "leaf-mgmt-d1", target: "rack-d1", plane: "mgmt", type: "routing_adjacency", weight: 1 },
-  { source: "leaf-mgmt-d2", target: "rack-d1", plane: "mgmt", type: "routing_adjacency", weight: 1 },
-  { source: "leaf-mgmt-d1", target: "rack-d2", plane: "mgmt", type: "routing_adjacency", weight: 1 },
-  { source: "leaf-mgmt-d2", target: "rack-d2", plane: "mgmt", type: "routing_adjacency", weight: 1 },
-  { source: "leaf-mgmt-d3", target: "rack-d3", plane: "mgmt", type: "routing_adjacency", weight: 1 },
-  { source: "leaf-mgmt-d4", target: "rack-d3", plane: "mgmt", type: "routing_adjacency", weight: 1 },
-  { source: "leaf-mgmt-d3", target: "rack-d4", plane: "mgmt", type: "routing_adjacency", weight: 1 },
-  { source: "leaf-mgmt-d4", target: "rack-d5", plane: "mgmt", type: "routing_adjacency", weight: 1 },
-  { source: "leaf-mgmt-d2", target: "rack-d6", plane: "mgmt", type: "routing_adjacency", weight: 1 },
+  // Leaf -> Rack (data plane)
+  { source: "leaf-001", target: "rack-001", plane: "data", type: "routing_adjacency", weight: 1 },
+  { source: "leaf-002", target: "rack-001", plane: "data", type: "routing_adjacency", weight: 1 },
+  { source: "leaf-001", target: "rack-002", plane: "data", type: "routing_adjacency", weight: 1 },
+  { source: "leaf-002", target: "rack-002", plane: "data", type: "routing_adjacency", weight: 1 },
+  { source: "leaf-003", target: "rack-003", plane: "data", type: "routing_adjacency", weight: 1 },
+  { source: "leaf-004", target: "rack-003", plane: "data", type: "routing_adjacency", weight: 1 },
+  { source: "leaf-003", target: "rack-004", plane: "data", type: "routing_adjacency", weight: 1 },
+  { source: "leaf-004", target: "rack-005", plane: "data", type: "routing_adjacency", weight: 1 },
+  { source: "leaf-002", target: "rack-006", plane: "data", type: "routing_adjacency", weight: 1 },
+  { source: "leaf-005", target: "rack-007", plane: "data", type: "routing_adjacency", weight: 1 },
+  { source: "leaf-006", target: "rack-008", plane: "data", type: "routing_adjacency", weight: 1 },
+  { source: "leaf-003", target: "rack-009", plane: "data", type: "routing_adjacency", weight: 1 },
+  { source: "leaf-004", target: "rack-010", plane: "data", type: "routing_adjacency", weight: 1 },
 
-  // Rack -> Server containment
-  { source: "rack-d1", target: "server-d1-01", plane: "shared", type: "containment", weight: 1 },
-  { source: "rack-d1", target: "server-d1-02", plane: "shared", type: "containment", weight: 1 },
-  { source: "rack-d1", target: "server-d1-03", plane: "shared", type: "containment", weight: 1 },
-  { source: "rack-d1", target: "server-d1-04", plane: "shared", type: "containment", weight: 1 },
-  { source: "rack-d1", target: "server-d1-05", plane: "shared", type: "containment", weight: 1 },
-  { source: "rack-d1", target: "server-d1-06", plane: "shared", type: "containment", weight: 1 },
-  { source: "rack-d2", target: "server-d2-01", plane: "shared", type: "containment", weight: 1 },
-  { source: "rack-d2", target: "server-d2-02", plane: "shared", type: "containment", weight: 1 },
-  { source: "rack-d2", target: "server-d2-03", plane: "shared", type: "containment", weight: 1 },
-  { source: "rack-d2", target: "server-d2-04", plane: "shared", type: "containment", weight: 1 },
-  { source: "rack-d2", target: "server-d2-05", plane: "shared", type: "containment", weight: 1 },
-  { source: "rack-d3", target: "server-d3-01", plane: "shared", type: "containment", weight: 1 },
-  { source: "rack-d3", target: "server-d3-02", plane: "shared", type: "containment", weight: 1 },
-  { source: "rack-d3", target: "server-d3-03", plane: "shared", type: "containment", weight: 1 },
-  { source: "rack-d3", target: "server-d3-04", plane: "shared", type: "containment", weight: 1 },
-  { source: "rack-d3", target: "server-d3-05", plane: "shared", type: "containment", weight: 1 },
-  { source: "rack-d3", target: "server-d3-06", plane: "shared", type: "containment", weight: 1 },
-  { source: "rack-d3", target: "server-d3-07-gpu", plane: "shared", type: "containment", weight: 1 },
-  { source: "rack-d3", target: "server-d3-08-gpu", plane: "shared", type: "containment", weight: 1 },
-  { source: "rack-d4", target: "server-d4-01", plane: "shared", type: "containment", weight: 1 },
-  { source: "rack-d4", target: "server-d4-02", plane: "shared", type: "containment", weight: 1 },
-  { source: "rack-d4", target: "server-d4-03", plane: "shared", type: "containment", weight: 1 },
-  { source: "rack-d4", target: "server-d4-04", plane: "shared", type: "containment", weight: 1 },
-  { source: "rack-d5", target: "server-d5-01", plane: "shared", type: "containment", weight: 1 },
-  { source: "rack-d5", target: "server-d5-02", plane: "shared", type: "containment", weight: 1 },
-  { source: "rack-d5", target: "server-d5-03", plane: "shared", type: "containment", weight: 1 },
-  { source: "rack-d5", target: "server-d5-04", plane: "shared", type: "containment", weight: 1 },
-  { source: "rack-d5", target: "server-d5-05", plane: "shared", type: "containment", weight: 1 },
-  { source: "rack-d5", target: "server-d5-06", plane: "shared", type: "containment", weight: 1 },
-  { source: "rack-d5", target: "server-d5-07", plane: "shared", type: "containment", weight: 1 },
-  { source: "rack-d6", target: "server-d6-01", plane: "shared", type: "containment", weight: 1 },
-  { source: "rack-d6", target: "server-d6-02", plane: "shared", type: "containment", weight: 1 },
-  { source: "rack-d6", target: "server-d6-03", plane: "shared", type: "containment", weight: 1 },
-  { source: "rack-d6", target: "server-d6-04", plane: "shared", type: "containment", weight: 1 },
-  { source: "rack-d6", target: "server-d6-05", plane: "shared", type: "containment", weight: 1 }
+  // Leaf -> Rack (mgmt plane)
+  { source: "leaf-007", target: "rack-001", plane: "mgmt", type: "routing_adjacency", weight: 1 },
+  { source: "leaf-008", target: "rack-001", plane: "mgmt", type: "routing_adjacency", weight: 1 },
+  { source: "leaf-007", target: "rack-002", plane: "mgmt", type: "routing_adjacency", weight: 1 },
+  { source: "leaf-008", target: "rack-002", plane: "mgmt", type: "routing_adjacency", weight: 1 },
+  { source: "leaf-009", target: "rack-003", plane: "mgmt", type: "routing_adjacency", weight: 1 },
+  { source: "leaf-010", target: "rack-003", plane: "mgmt", type: "routing_adjacency", weight: 1 },
+  { source: "leaf-009", target: "rack-004", plane: "mgmt", type: "routing_adjacency", weight: 1 },
+  { source: "leaf-010", target: "rack-005", plane: "mgmt", type: "routing_adjacency", weight: 1 },
+  { source: "leaf-008", target: "rack-006", plane: "mgmt", type: "routing_adjacency", weight: 1 },
+  { source: "leaf-011", target: "rack-007", plane: "mgmt", type: "routing_adjacency", weight: 1 },
+  { source: "leaf-012", target: "rack-008", plane: "mgmt", type: "routing_adjacency", weight: 1 },
+  { source: "leaf-009", target: "rack-009", plane: "mgmt", type: "routing_adjacency", weight: 1 },
+  { source: "leaf-010", target: "rack-010", plane: "mgmt", type: "routing_adjacency", weight: 1 },
+
+  // Rack -> Server (containment)
+  { source: "rack-001", target: "server-001", plane: "shared", type: "containment", weight: 1 },
+  { source: "rack-001", target: "server-002", plane: "shared", type: "containment", weight: 1 },
+  { source: "rack-001", target: "server-003", plane: "shared", type: "containment", weight: 1 },
+  { source: "rack-001", target: "server-004", plane: "shared", type: "containment", weight: 1 },
+  { source: "rack-001", target: "server-005", plane: "shared", type: "containment", weight: 1 },
+  { source: "rack-001", target: "server-006", plane: "shared", type: "containment", weight: 1 },
+  { source: "rack-002", target: "server-007", plane: "shared", type: "containment", weight: 1 },
+  { source: "rack-002", target: "server-008", plane: "shared", type: "containment", weight: 1 },
+  { source: "rack-002", target: "server-009", plane: "shared", type: "containment", weight: 1 },
+  { source: "rack-002", target: "server-010", plane: "shared", type: "containment", weight: 1 },
+  { source: "rack-002", target: "server-011", plane: "shared", type: "containment", weight: 1 },
+  { source: "rack-003", target: "server-012", plane: "shared", type: "containment", weight: 1 },
+  { source: "rack-003", target: "server-013", plane: "shared", type: "containment", weight: 1 },
+  { source: "rack-003", target: "server-014", plane: "shared", type: "containment", weight: 1 },
+  { source: "rack-003", target: "server-015", plane: "shared", type: "containment", weight: 1 },
+  { source: "rack-003", target: "server-016", plane: "shared", type: "containment", weight: 1 },
+  { source: "rack-003", target: "server-017", plane: "shared", type: "containment", weight: 1 },
+  { source: "rack-003", target: "server-018", plane: "shared", type: "containment", weight: 1 },
+  { source: "rack-003", target: "server-019", plane: "shared", type: "containment", weight: 1 },
+  { source: "rack-004", target: "server-020", plane: "shared", type: "containment", weight: 1 },
+  { source: "rack-004", target: "server-021", plane: "shared", type: "containment", weight: 1 },
+  { source: "rack-004", target: "server-022", plane: "shared", type: "containment", weight: 1 },
+  { source: "rack-004", target: "server-023", plane: "shared", type: "containment", weight: 1 },
+  { source: "rack-005", target: "server-024", plane: "shared", type: "containment", weight: 1 },
+  { source: "rack-005", target: "server-025", plane: "shared", type: "containment", weight: 1 },
+  { source: "rack-005", target: "server-026", plane: "shared", type: "containment", weight: 1 },
+  { source: "rack-005", target: "server-027", plane: "shared", type: "containment", weight: 1 },
+  { source: "rack-005", target: "server-028", plane: "shared", type: "containment", weight: 1 },
+  { source: "rack-005", target: "server-029", plane: "shared", type: "containment", weight: 1 },
+  { source: "rack-005", target: "server-030", plane: "shared", type: "containment", weight: 1 },
+  { source: "rack-006", target: "server-031", plane: "shared", type: "containment", weight: 1 },
+  { source: "rack-006", target: "server-032", plane: "shared", type: "containment", weight: 1 },
+  { source: "rack-006", target: "server-033", plane: "shared", type: "containment", weight: 1 },
+  { source: "rack-006", target: "server-034", plane: "shared", type: "containment", weight: 1 },
+  { source: "rack-006", target: "server-035", plane: "shared", type: "containment", weight: 1 },
+  { source: "rack-007", target: "server-036", plane: "shared", type: "containment", weight: 1 },
+  { source: "rack-007", target: "server-037", plane: "shared", type: "containment", weight: 1 },
+  { source: "rack-007", target: "server-038", plane: "shared", type: "containment", weight: 1 },
+  { source: "rack-007", target: "server-039", plane: "shared", type: "containment", weight: 1 },
+  { source: "rack-007", target: "server-040", plane: "shared", type: "containment", weight: 1 },
+  { source: "rack-007", target: "server-041", plane: "shared", type: "containment", weight: 1 },
+  { source: "rack-007", target: "server-042", plane: "shared", type: "containment", weight: 1 },
+  { source: "rack-007", target: "server-043", plane: "shared", type: "containment", weight: 1 },
+  { source: "rack-007", target: "server-044", plane: "shared", type: "containment", weight: 1 },
+  { source: "rack-008", target: "server-045", plane: "shared", type: "containment", weight: 1 },
+  { source: "rack-008", target: "server-046", plane: "shared", type: "containment", weight: 1 },
+  { source: "rack-008", target: "server-047", plane: "shared", type: "containment", weight: 1 },
+  { source: "rack-008", target: "server-048", plane: "shared", type: "containment", weight: 1 },
+  { source: "rack-008", target: "server-049", plane: "shared", type: "containment", weight: 1 },
+  { source: "rack-008", target: "server-050", plane: "shared", type: "containment", weight: 1 },
+  { source: "rack-009", target: "server-051", plane: "shared", type: "containment", weight: 1 },
+  { source: "rack-009", target: "server-052", plane: "shared", type: "containment", weight: 1 },
+  { source: "rack-009", target: "server-053", plane: "shared", type: "containment", weight: 1 },
+  { source: "rack-009", target: "server-054", plane: "shared", type: "containment", weight: 1 },
+  { source: "rack-009", target: "server-055", plane: "shared", type: "containment", weight: 1 },
+  { source: "rack-009", target: "server-056", plane: "shared", type: "containment", weight: 1 },
+  { source: "rack-009", target: "server-057", plane: "shared", type: "containment", weight: 1 },
+  { source: "rack-009", target: "server-058", plane: "shared", type: "containment", weight: 1 },
+  { source: "rack-009", target: "server-059", plane: "shared", type: "containment", weight: 1 },
+  { source: "rack-009", target: "server-060", plane: "shared", type: "containment", weight: 1 },
+  { source: "rack-010", target: "server-061", plane: "shared", type: "containment", weight: 1 },
+  { source: "rack-010", target: "server-062", plane: "shared", type: "containment", weight: 1 },
+  { source: "rack-010", target: "server-063", plane: "shared", type: "containment", weight: 1 },
+  { source: "rack-010", target: "server-064", plane: "shared", type: "containment", weight: 1 },
+  { source: "rack-010", target: "server-065", plane: "shared", type: "containment", weight: 1 },
+  { source: "rack-010", target: "server-066", plane: "shared", type: "containment", weight: 1 },
+  { source: "rack-010", target: "server-067", plane: "shared", type: "containment", weight: 1 },
+  { source: "rack-010", target: "server-068", plane: "shared", type: "containment", weight: 1 }
 ];
 
 export const fixtureMeta = {
   option: "D",
   totalServers: nodes.filter(n => n.ring === "R6").length,
-  dualLeafRacks: ["rack-d1", "rack-d2", "rack-d3"],
-  singleLeafRacks: ["rack-d4", "rack-d5", "rack-d6"],
-  borderLeaves: ["border-leaf-d1", "border-leaf-d2"],
-  superspines: ["superspine-data-1", "superspine-data-2", "superspine-mgmt-1", "superspine-mgmt-2"],
+  dualLeafRacks: ["rack-001", "rack-002", "rack-003", "rack-009", "rack-010"],
+  singleLeafRacks: ["rack-004", "rack-005", "rack-006", "rack-007", "rack-008"],
+  borderLeaves: ["border-leaf-001", "border-leaf-002"],
+  superspines: ["superspine-001", "superspine-002", "superspine-003", "superspine-004"],
   sharedRackControllerGroups: [
-    { controllers: ["rc-d1a", "rc-d1b"], racks: ["rack-d1", "rack-d2"] },
-    { controllers: ["rc-d3a", "rc-d3b"], racks: ["rack-d3", "rack-d4"] }
+    { controllers: ["rc-001", "rc-002"], racks: ["rack-001", "rack-002", "rack-007"] },
+    { controllers: ["rc-003", "rc-004"], racks: ["rack-003", "rack-004", "rack-009"] },
+    { controllers: ["rc-005", "rc-006"], racks: ["rack-005", "rack-010"] },
+    { controllers: ["rc-007", "rc-008"], racks: ["rack-008"] }
   ],
-  azOverrideServer: "server-d1-06"
+  azOverrideServers: ["server-006", "server-009", "server-026", "server-030", "server-038", "server-043", "server-054", "server-057"]
 };
 
 // §3.3 — Pod occupies R1 (root), identical to Option C.  R2 is the new

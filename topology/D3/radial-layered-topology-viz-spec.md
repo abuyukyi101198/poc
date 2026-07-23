@@ -161,6 +161,29 @@ clarity). Option C exports an empty `ringNames: {}` since all defaults match.
 Overrides are cosmetic only — they do not affect ring identity, layout, link rules, or any other behavior. The
 canonical ring identifiers (R0–R6) remain the structural keys throughout the codebase.
 
+### 4.5 Node ID convention
+
+All fixture node IDs follow the pattern **`node-type-NNN`** where `NNN` is a three-digit zero-padded integer,
+sequential within each type in a given fixture:
+
+| Node type | ID pattern | Examples |
+|---|---|---|
+| Pod | `pod-NNN` | `pod-001` |
+| Super-spine | `superspine-NNN` | `superspine-001`, `superspine-003` |
+| Spine | `spine-NNN` | `spine-001`, `spine-004` |
+| Leaf (access) | `leaf-NNN` | `leaf-001`, `leaf-005` |
+| Leaf (border) | `border-leaf-NNN` | `border-leaf-001`, `border-leaf-002` |
+| TOR (Options A/B) | `tor-NNN` | `tor-001`, `tor-002` |
+| Rack | `rack-NNN` | `rack-001`, `rack-006` |
+| Server | `server-NNN` | `server-001`, `server-035` |
+| Rack controller (metadata) | `rc-NNN` | `rc-001`, `rc-006` |
+
+Numbering within a fixture is sequential across plane (data spines before mgmt spines, etc.) and globally
+sequential for servers (e.g. rack-001's servers are 001–006, rack-002's are 007–011, and so on). IDs are
+fixture-scoped — `server-001` in option-a.js and `server-001` in option-c.js are independent — since only one
+fixture is loaded at a time. GPU and accelerator nodes are not distinguished in the ID; their hardware type is
+captured in `metadata.node_type` instead.
+
 ---
 
 ## 5. Layout Algorithm
@@ -526,7 +549,7 @@ paths are unaffected. See §11.6 for the full colour-mapping table and persisten
 {
   "nodes": [
     {
-      "id": "rack-14",
+      "id": "rack-014",
       "ring": "R5",
       "label": "Rack 14",
       "weight": 12,
@@ -534,14 +557,14 @@ paths are unaffected. See §11.6 for the full colour-mapping table and persisten
       "leaf_role": "n/a",
       "trust_tier": "operator",
       "failure_domain_role": "redundant",
-      "rack_controller_ids": ["rc-03", "rc-07"],
+      "rack_controller_ids": ["rc-003", "rc-007"],
       "availability_zone": "az-blue",
       "metadata": {}
     },
     {
-      "id": "server-14-06",
+      "id": "server-042",
       "ring": "R6",
-      "label": "R14-Srv06",
+      "label": "Rack14-Srv06",
       "weight": 1,
       "plane": "shared",
       "leaf_role": "n/a",
@@ -549,12 +572,12 @@ paths are unaffected. See §11.6 for the full colour-mapping table and persisten
       "failure_domain_role": "n/a",
       "rack_controller_ids": [],
       "availability_zone": "az-green",
-      "metadata": { "rack": "rack-14", "note": "AZ override — reassigned out of the rack's default az-blue." }
+      "metadata": { "rack": "rack-014", "note": "AZ override — reassigned out of the rack's default az-blue." }
     },
     {
-      "id": "leaf-data-14a",
+      "id": "leaf-014",
       "ring": "R4",
-      "label": "Data Leaf 14a",
+      "label": "Data Leaf 14",
       "weight": 12,
       "plane": "data",
       "leaf_role": "access",
@@ -565,10 +588,10 @@ paths are unaffected. See §11.6 for the full colour-mapping table and persisten
       "metadata": {}
     },
     {
-      "id": "border-leaf-1",
+      "id": "border-leaf-003",
       "ring": "R4",
-      "label": "Border Leaf 1",
-      "weight": 1,
+      "label": "Border Leaf 3",
+      "weight": 2,
       "plane": "data",
       "leaf_role": "border",
       "trust_tier": "operator",
@@ -576,26 +599,52 @@ paths are unaffected. See §11.6 for the full colour-mapping table and persisten
       "rack_controller_ids": [],
       "availability_zone": "n/a",
       "metadata": {}
+    },
+    {
+      "id": "tor-001",
+      "ring": "R4",
+      "label": "TOR-1",
+      "weight": 8,
+      "plane": "shared",
+      "leaf_role": "access",
+      "trust_tier": "operator",
+      "failure_domain_role": "redundant",
+      "rack_controller_ids": [],
+      "availability_zone": "n/a",
+      "metadata": {}
+    },
+    {
+      "id": "tor-002",
+      "ring": "R4",
+      "label": "TOR-2",
+      "weight": 8,
+      "plane": "shared",
+      "leaf_role": "access",
+      "trust_tier": "operator",
+      "failure_domain_role": "redundant",
+      "rack_controller_ids": [],
+      "availability_zone": "n/a",
+      "metadata": {}
     }
   ],
   "links": [
     {
-      "source": "leaf-data-14a",
-      "target": "rack-14",
+      "source": "leaf-014",
+      "target": "rack-014",
       "plane": "data",
       "type": "routing_adjacency",
       "weight": 1
     },
     {
-      "source": "leaf-data-14b",
-      "target": "rack-14",
+      "source": "leaf-015",
+      "target": "rack-014",
       "plane": "data",
       "type": "routing_adjacency",
       "weight": 1
     },
     {
-      "source": "tor-1",
-      "target": "tor-2",
+      "source": "tor-001",
+      "target": "tor-002",
       "plane": "shared",
       "type": "peer_adjacency",
       "weight": 1
@@ -604,16 +653,16 @@ paths are unaffected. See §11.6 for the full colour-mapping table and persisten
 }
 ```
 
-The two `routing_adjacency` links into `rack-14` demonstrate the dual-leaf case rendered natively, with no
-schema-level special case required. `border-leaf-1` demonstrates the Border Leaf as an ordinary R4 node (§4.3, §7.5):
-it takes normal spine-adjacency `routing_adjacency` links (not shown above) exactly like `leaf-data-14a` — no
+The two `routing_adjacency` links into `rack-014` demonstrate the dual-leaf case rendered natively, with no
+schema-level special case required. `border-leaf-003` demonstrates the Border Leaf as an ordinary R4 node (§4.3,
+§7.5): it takes normal spine-adjacency `routing_adjacency` links (not shown above) exactly like `leaf-014` — no
 additional external-connectivity link is needed, since the `leaf_role: "border"` attribute alone conveys its
-external/WAN/DCI role. The `tor-1`/`tor-2` pair demonstrates the same-ring `peer_adjacency` exception (§6.1a) used in
-Option B, rendered with the standard dendrogram path grammar (§6.4) and a distinct plane color (§6.2). `rack-14`
-demonstrates the MAAS control-plane attribute (§7.7 — two redundant rack controllers) and the primary Availability
-Zone case (§7.8 — rack arc fill overridden to `az-blue`'s accent colour); `server-14-06` demonstrates the R6 AZ
-override case (§7.8) — its own `availability_zone` (`az-green`) differs from its parent rack's (`az-blue`), which is
-what triggers the thin outer-edge override stroke rather than a full-fill change.
+external/WAN/DCI role. The `tor-001`/`tor-002` pair demonstrates the same-ring `peer_adjacency` exception (§6.1a)
+used in Option B, rendered with the standard dendrogram path grammar (§6.4) and a distinct plane color (§6.2).
+`rack-014` demonstrates the MAAS control-plane attribute (§7.7 — two redundant rack controllers) and the primary
+Availability Zone case (§7.8 — rack arc fill overridden to `az-blue`'s accent colour); `server-042` demonstrates
+the R6 AZ override case (§7.8) — its own `availability_zone` (`az-green`) differs from its parent rack's
+(`az-blue`), which is what triggers the thin outer-edge override stroke rather than a full-fill change.
 
 ### 9.2 Configuration parameters
 
