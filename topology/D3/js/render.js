@@ -301,11 +301,9 @@ function arcLabelTransform(node) {
  */
 function arcLabelFontSize(node) {
   if (node.ring === 'R6') {
-    // Dynamic font sizing for servers based on arc span
     const spanDeg = (node.endAngle - node.startAngle) * 180 / Math.PI;
-    // Scale font size: wider arcs get larger text, narrower arcs get smaller
-    // Max 6px at ~8+ degrees, min 3.5px at narrow spans
-    const dynamicSize = Math.max(3.5, Math.min(6, spanDeg * 0.7));
+    // Dynamic font sizing for servers — max 8 px at ~9+ degrees, min 3.5 px at narrow spans.
+    const dynamicSize = Math.max(3.5, Math.min(8, spanDeg * 2));
     return `${dynamicSize.toFixed(1)}px`;
   }
 

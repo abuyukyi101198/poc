@@ -263,7 +263,7 @@ body {
   align-items: center;
   padding: 7px 18px 5px;
   border: 1px solid var(--control-border);
-  border-bottom: 2px solid transparent;
+  border-bottom: 2px solid var(--control-border);
   background: var(--panel-bg);
   color: var(--text-secondary);
   cursor: pointer;

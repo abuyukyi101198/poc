@@ -296,7 +296,7 @@ export function renderStackView(selector, nodes, links, meta = {}, options = {})
   // (With rotate(-45) the anchor is the visual start of the label, so we must
   // pre-offset it upward by ≈ label_length × sin 45° ≈ 44 px.)
   // Pointer events disabled so the hit-target rects remain the click surface.
-  const LABEL_Y_OFFSET = 44;   // px — shifts anchor above the arm so text clears the chart
+  const LABEL_Y_OFFSET = 52;   // px — shifts anchor above the arm so 11 px text clears the chart
   root.append('g').attr('class', 'stack-labels')
     .selectAll('text')
     .data(sortedPods)
@@ -308,7 +308,7 @@ export function renderStackView(selector, nodes, links, meta = {}, options = {})
       .attr('text-anchor', 'end')
       .attr('dominant-baseline', 'middle')
       .attr('font-family', "'Ubuntu Mono', 'Courier New', monospace")
-      .attr('font-size', 9)
+      .attr('font-size', 11)
       .attr('letter-spacing', '0.01em')
       .attr('fill', 'var(--text-secondary)')
       .attr('pointer-events', 'none')
