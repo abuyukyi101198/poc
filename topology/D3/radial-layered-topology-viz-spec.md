@@ -86,10 +86,10 @@ Each populated ring is laid out independently.
 
 | Option                  | Populated rings                                                                                            | Notes                                                                                                                                                           |
 |-------------------------|------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| **A** (very small)      | R5 (Rack, single ring segment), R6 (Server)                                                                | Single managed switch is drawn as an **R5 rack-attribute** (a switch icon/badge on the rack arc), not a separate ring — there is no tier structure to speak of. |
-| **B** (small resilient) | R1 (Pod, may be a single pod), R3 (ToR pair, labeled "Tier-2 / ToR"), R5, R6                               | R4 (Leaf) is **not separately populated** — ToR occupies the R3 slot directly, since B has no distinct leaf/spine split. R2 is omitted. The two ToR nodes carry an explicit same-ring peer link (§6.1a) representing their direct uplink/adjacency. |
-| **C** (leaf-spine pod)  | R1, R2 (only if super-spine present within a large pod — otherwise omitted), R3 (Spine), R4 (Leaf, including Border Leaf, see §4.3), R5, R6 | Full generic stack minus Region.                                                                                                                                |
-| **D** (multi-pod)       | R0, R1, R2, R3, R4 (Leaf, including Border Leaf, see §4.3), R5, R6                                         | Full generic stack.                                                                                                                                             |
+| **A** (very small)      | R4 (TOR / managed switch, single node), R5 (Rack, single arc), R6 (Server)                                | No spine/leaf split, no Pod ring. R4 is relabelled "TOR" via `meta.ringNames`. All servers share one rack. |
+| **B** (small resilient) | R4 (TOR pair, relabelled "TOR"), R5 (Rack, two arcs), R6 (Server)                                         | No Pod ring, no spine/leaf split. The two ToR nodes carry an explicit same-ring peer link (§6.1a) representing their direct uplink/adjacency. Both TORs connect to both racks, expressing dual-homing at the rack level. R2/R3 are omitted. |
+| **C** (leaf-spine pod)  | R1 (Pod), R3 (Spine), R4 (Leaf, including Border Leaf, see §4.3), R5 (Rack), R6 (Server)                  | R2 (Super-spine) omitted in a standard single-pod deployment; included only when a super-spine tier is present. |
+| **D** (multi-pod)       | R1 (Pod), R2 (Super-spine), R3 (Spine), R4 (Leaf, including Border Leaf, see §4.3), R5 (Rack), R6 (Server) | Full generic stack minus Region (R0). R0 is reserved for a future multi-campus / region layer. |
 
 ---
 
@@ -102,8 +102,8 @@ Each populated ring is laid out independently.
 | R0 Region | A campus/region controller scope                           | Root, at most one per rendered graph                                                    |
 | R1 Pod    | A self-contained routed fabric block                       | One arc per pod                                                                         |
 | R2 Tier-1 | A super-spine / core switch                                | One arc per physical device                                                             |
-| R3 Tier-2 | A spine switch, or a ToR switch in Option B                | One arc per physical device; ToR pairs in Option B may carry a same-ring peer link (§6.1a) |
-| R4 Tier-3 | A leaf switch — data, management, or border (external/WAN/DCI role), see §4.3 | One arc per physical device                                                             |
+| R3 Tier-2 | A spine switch                                             | One arc per physical device                                                                                |
+| R4 Tier-3 | A leaf switch (access or border role, see §4.3); **or a ToR switch in Options A/B** (no distinct leaf/spine split at those scales, so TOR occupies the R4 slot directly and is relabelled "TOR" via `meta.ringNames`) | One arc per physical device; ToR pairs in Option B carry a same-ring peer link (§6.1a) |
 | R5 Rack   | A rack (logical + physical unit). Note: this is a *physical* containment unit — it is a distinct concept from the MAAS control-plane's rack-controller grouping, which does not always map 1:1 (§7.7). Its arc fill is overridden by `availability_zone` when set (§7.8) | One arc per rack                                                                        |
 | R6 Server | A server, including GPU/accelerator nodes                  | One arc per physical server; DPUs are a server attribute, not a separate arc; carries an AZ override stroke only when its own `availability_zone` differs from its parent rack's (§7.8) |
 
@@ -134,6 +134,11 @@ may receive links from both planes simultaneously. Plane membership is represent
 coloring, filtering, and link generation throughout the visualization. Per-plane node **fill** tinting (Data leaves/
 spines shaded toward the Data hue, Management leaves/spines shaded toward the Management hue, both at a low tint over
 the dark-mode ring base) is specified once, in §11.3 — not repeated here.
+
+**`plane: "shared"` on routing rings (TOR in Options A/B):** when an R4 node carries `plane: "shared"` (because at the
+ToR scale both Data and Management traffic traverse the same switch), no single-plane tint is defined. The fill falls
+back to the Data plane tint for that ring (§11.3), since TOR is architecturally the small-scale replacement of the
+full spine + leaf stack and the Data hue is the dominant visual plane across Options C/D.
 
 Within R4, `leaf_role` distinguishes ordinary access/fabric leaves (`"access"`) from Border Leaves (`"border"`). A
 Border Leaf is a normal R4 ring member — same ring band, same spine-adjacency link rules, same weight/angle layout
@@ -196,10 +201,11 @@ uplink in Option B (§3.3), or an analogous leaf-to-leaf/spine-to-spine peer lin
 
 - Link `type: "peer_adjacency"`, restricted to source and target sharing the same `ring`.
 - Path geometry follows the **same radial/circular dendrogram path grammar as standard inter-ring links** (§6.4):
-  a radial segment from the source node out to a gap midpoint, a circular arc sweeping from source angle to target
-  angle, and a radial segment back in to the target node. Since there is no adjacent ring to supply a natural gap,
-  the gap midpoint is a small fixed radial offset just outside the ring's own outer radius (a "virtual ring" one
-  gutter-width beyond the ring band).
+  a radial segment from the source node **inward** to a gap midpoint, a circular arc sweeping from source angle to
+  target angle, and a radial segment back out to the target node. Since there is no adjacent outer ring to supply a
+  natural gap, the arc midpoint is placed at a small fixed radial offset **inside** the ring's own band (inward from
+  the ring's outer edge) rather than in the outward gap — this ensures the peer-adjacency arc never coincides with
+  the outward-arcing routing/containment links that also float in that same gap.
 - Color is the only differentiator from routing links: link color lookup is keyed by `type`, not `plane` — a
   `peer_adjacency` link always resolves to the dedicated "Peer adjacency" color pair in §6.2, even though its `plane`
   value remains `"shared"` for schema consistency with other physical-layer links (§9.1). No dash pattern is used.
@@ -242,7 +248,9 @@ circular dendrogram path grammar:
 - Radial segment from the arc exit point into the target node.
 
 For standard links the gap midpoint sits between two adjacent populated rings; for same-ring peer links (§6.1a) it
-sits at a small fixed radial offset just outside the shared ring's own outer radius. All link segments are therefore
+sits at a small fixed radial offset **inside** the shared ring's own band (inward from the outer edge), so that the
+peer arc is clearly separated from the outward routing/containment arcs that float in the gap just beyond the same
+ring's outer edge. All link segments are therefore
 radial or circular in every case. Explicit edge bundling or angular deflection is not part of this specification.
 Where multiple links from different plane/type lanes would otherwise coincide in the same gap, each lane is offset by
 a small fixed radial amount rather than sharing one path — see §6.6.
@@ -369,10 +377,12 @@ A primary control (slider or discrete selector, A–D) switches the active per-o
 
 ### 8.2 Plane toggle
 
-Independent show/hide toggles for **Data**, **Management**, and **Containment** (rack→server physical skeleton) link
-sets, each toggleable without affecting ring/node geometry — only link visibility changes. Default state: all three on.
-A fourth toggle for OOB should be added (default off) when OOB links are implemented. (Visual/UI treatment of these
-toggles — button style, placement — is specified once, in §11.4; not repeated here.)
+Independent show/hide toggles for **Data**, **Management**, **Containment** (rack→server physical skeleton), and
+**Peer Adjacency** link sets, each toggleable without affecting ring/node geometry — only link visibility changes.
+Default state: all four on. The Peer Adjacency toggle is only displayed for options that contain peer-adjacency links
+(currently Option B only); it is hidden for options where no such links exist. A fifth toggle for OOB should be added
+(default off) when OOB links are implemented. (Visual/UI treatment of these toggles — button style, placement,
+per-plane color — is specified once, in §11.4; not repeated here.)
 
 ### 8.3 Hover / focus behavior
 
@@ -391,9 +401,10 @@ single path.
 - All node arcs not in the lineage set (opacity 0.07).
 - All links not in the lineage link set (opacity 0.07, `stroke-width` 1 px).
 
-**Example — hovering a rack (R5):** the rack's leaf parents (R4), all spines connected to those leaves (R3), and the
-pod (R1) are illuminated, along with every leaf→rack, spine→leaf, and pod→spine link that connects them. Servers and
-other racks are dimmed.
+**Example — hovering a rack (R5):** the rack's leaf parents (R4), all spines connected to those leaves (R3), all
+super-spines connected to those spines (R2, Option D only), and the pod (R1) are illuminated, along with every
+leaf→rack, spine→leaf, super-spine→spine, and pod→super-spine link that connects them. Servers and other racks are
+dimmed.
 
 On mouse leave, all arcs and links return to their resting state (tint colors, uniform `stroke-width` 1 px).
 
@@ -582,9 +593,10 @@ what triggers the thin outer-edge override stroke rather than a full-fill change
    attribute styling (arc border/hatch) remains legible when many leaves are packed into a dense R4 ring at Option D
    scale, or whether it needs a stronger visual treatment (e.g. a bolder outline) at high leaf density.
 
-3. **Whether Option A merits a simplified presentation.** With R1–R4 empty, the ring model produces a mostly-empty
-   center. A non-radial fallback card for Option A may be more appropriate, but this is low-risk to defer until the
-   other options are validated.
+3. **Option A at very-small scale.** With only R4/R5/R6 populated, the inner rings (R1–R3) are empty and the centre
+   of the radial chart is unused space. This reads correctly (the model is self-consistent) but a non-radial fallback
+   card for Option A may be more appropriate for product-UI use. Deferred — the current radial form is valid for PoC
+   purposes and the inner-ring emptiness actually reinforces the "no spine/leaf hierarchy" message visually.
 
 4. **Cloud-management cluster membership — descoped, may return.** An earlier draft of this spec proposed a
    `cluster_membership` attribute (Ceph replica sets, LXD clusters, MicroOVN control-plane, Kubernetes node groups)
@@ -675,8 +687,11 @@ Management plane-tint rule as R3.
 
 ### 11.4 Legend and controls
 
-- **Plane toggle bar** (above chart): flat pill buttons labeled "Data", "Management", "Containment", on the dark
-  panel surface (§11.1). Behavior and default state are specified in §8.2 (not restated here).
+- **Plane toggle bar** (above chart): flat pill buttons labeled "Data", "Management", "Containment", and
+  "Peer Adjacency", on the dark panel surface (§11.1). Each button's active-state fill matches its link's hover
+  color (§6.2) — Data uses Ubuntu Orange, Management uses Aubergine, Containment uses warm grey, Peer Adjacency uses
+  Ubuntu Yellow/gold. The Peer Adjacency button is hidden for options that contain no peer-adjacency links. Behavior
+  and default state are specified in §8.2 (not restated here).
 - **Ring depth legend** (below chart): coloured chips matching ring/node arc fills (§11.3), connected by `→` arrows,
   reading Pod → Spine → Leaf → Rack → Server. Static, not interactive.
 - **Chart title:** "Datacenter Network Topology", with an Ubuntu-Orange underline accent, set in the primary text
@@ -685,13 +700,23 @@ Management plane-tint rule as R3.
 
 ### 11.5 Implementation status notes
 
-- **Border leaf as R4 ring member (§4.3, §7.5):** implemented. `border-leaf-1`/`border-leaf-2` are ordinary
-  `ring: "R4"` nodes with `leaf_role: "border"` and full-mesh spine-adjacency links, matching other R4 leaves.
-- **ToR peer link (§6.1a):** not applicable to the Option C fixture (Option B only); no fixture exists yet for
-  Option B. The rendering path (`radialLinkPath`'s same-ring/virtual-gap branch) is implemented and ready for a
-  future Option B fixture.
+- **All four options A–D implemented.** Each option is a self-contained JS fixture (`data/option-{a,b,c,d}.js`)
+  rendered by the same generic layout + render pipeline. Options A and B include R5 Rack nodes with AZ assignments,
+  so the full R4→R5→R6 topology renders for all four options.
+- **Border leaf as R4 ring member (§4.3, §7.5):** implemented. `border-leaf-*` nodes are ordinary `ring: "R4"` nodes
+  with `leaf_role: "border"` and full-mesh spine-adjacency links, matching other R4 leaves.
+- **ToR peer link (§6.1a) — Option B:** implemented. The `tor-1`/`tor-2` pair carries a `type: "peer_adjacency"` link
+  rendered via the same-ring/virtual-gap branch of `radialLinkPath` in `render.js`. The peer arc is placed inside
+  the R4 ring band (inward from the outer edge) so it does not overlap the outward routing arcs in the same gap.
+- **Peer Adjacency plane toggle (§8.2):** implemented as a fourth toggle button that is shown only when the active
+  fixture contains `type: "peer_adjacency"` links. Active state uses `--link-peer-hover` (Ubuntu Yellow/gold),
+  matching the link color.
+- **TOR plane-tint fallback (§4.3):** `plane: "shared"` R4 nodes (TOR in Options A/B) receive the Data plane tint
+  (`--plane-r4-data`) as a fallback fill, since no `"shared"` tint is defined in `PLANE_TINTS`.
+- **R2 super-spine hover lineage (§8.3):** `RING_DEPTH` in `interaction.js` now includes R2 at depth 1, so BFS
+  correctly traverses Spine→Superspine→Pod in Option D.
 - **Plane-tinted fills and dark theme (§11.1, §11.3):** implemented — dark canvas/panel/text surfaces, plane-tinted
-  R3/R4 fills, and the dedicated Border Leaf Sage fill are all live in `layout.js`/`render.js`/`style.css`.
+  R2/R3/R4 fills, and the dedicated Border Leaf Sage fill are all live in `layout.js`/`render.js`/`style.css`.
 - **Parallel lane offset (§6.6):** implemented — Data/Management/Containment/Peer-adjacency lanes are offset by a
   fixed px amount from each gap's midpoint radius (`LANE_OFFSET_PX` in `render.js`).
 - **Label degradation (§8.4):** implemented at the arc-label level (`MIN_LABEL_DEG` in `render.js` hides inline
@@ -702,10 +727,9 @@ Management plane-tint rule as R3.
 - **MAAS control-plane rendering (§7.7):** controller assignment is surfaced exclusively through the tooltip's
   "MAAS Control Plane" section (§8.6) — there is no on-canvas arc badge or other indicator of `rack_controller_ids`
   until a node is hovered.
-- **Availability Zone palette (§7.8):** the dark-theme AZ accent palette (`#1F5C34`/`#1E4E78`/`#7A2733`/`#8C6A24`) is
-  a subdued/muted tint of the four brand accent hues, so AZ fill overrides read as a quieter background signal
-  against the dark canvas rather than competing visually with Data/Management link colours. See §11.6 for the
-  light-theme equivalents.
+- **Availability Zone palette (§7.8):** implemented across all four options. The dark-theme AZ accent palette
+  (`#1F5C34`/`#1E4E78`/`#7A2733`/`#8C6A24`) is a subdued/muted tint of the four brand accent hues. Options A and B
+  use `az-1` (Option A rack) and `az-1`/`az-2` (Option B racks). See §11.6 for light-theme equivalents.
 - **Theme toggle (§11.6):** implemented — an icon-only dark/light mode toggle button (`theme.js`) flips a
   `data-theme` attribute on `<html>`; every colour in the chart and HTML chrome is a CSS `var()` reference resolved
   against `[data-theme]`, so the whole visualization re-colours instantly with no JS-side re-render.
