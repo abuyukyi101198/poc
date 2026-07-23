@@ -398,6 +398,12 @@ body {
   color: var(--toggle-active-fg);
 }
 
+.toggle-btn.active[data-plane="peer_adjacency"] {
+  background:   var(--link-peer-hover);
+  border-color: var(--link-peer-hover);
+  color: var(--toggle-active-fg);
+}
+
 /* ── Footer ───────────────────────────────────────────────────────────────── */
 footer {
   padding: 16px 32px 24px;

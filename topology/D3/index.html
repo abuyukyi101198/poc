@@ -61,6 +61,7 @@
     <button class="toggle-btn active" data-plane="data">Data</button>
     <button class="toggle-btn active" data-plane="mgmt">Management</button>
     <button class="toggle-btn active" data-plane="shared">Containment</button>
+    <button class="toggle-btn active" data-plane="peer_adjacency" id="toggle-peer" style="display:none">Peer Adjacency</button>
   </div>
 
   <div class="ring-legend" role="list" aria-label="Ring depth key" id="ring-legend">
@@ -139,6 +140,11 @@
 
       // Update plane toggles to active (reset on option switch)
       document.querySelectorAll('.toggle-btn').forEach(b => b.classList.add('active'));
+
+      // Show Peer Adjacency toggle only when the fixture contains such links
+      const hasPeerAdj = links.some(l => l.type === 'peer_adjacency');
+      const peerBtn = document.getElementById('toggle-peer');
+      if (peerBtn) peerBtn.style.display = hasPeerAdj ? '' : 'none';
 
       activeOption = option;
       window.__topology = { root, layoutNodes, links: resolvedLinks };

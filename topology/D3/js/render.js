@@ -350,7 +350,9 @@ export function drawLinks(root, layoutNodes, links) {
       .attr('class',       d => `link plane-${d.plane} type-${d.type}`)
       .attr('data-source', d => d.source)
       .attr('data-target', d => d.target)
-      .attr('data-plane',  d => d.plane)
+      // peer_adjacency links carry plane:"shared" for schema consistency but
+      // must be toggled independently, so stamp the logical colour-key instead.
+      .attr('data-plane',  d => d.type === 'peer_adjacency' ? 'peer_adjacency' : d.plane)
       .attr('d', d => radialLinkPath(
         nodeById.get(d.source),
         nodeById.get(d.target),
@@ -445,9 +447,10 @@ const LANE_OFFSET_PX = {
   peer_adjacency:  0,     // own virtual gap; offset reserved for future multi-peer case
 };
 
-// Approximate inter-ring gap width (px) — used to place the virtual gap for
-// same-ring peer-adjacency links (§6.1a) just outside the shared ring's own
-// outer radius, mirroring the real inter-ring gap width (§11.3: 18–20 px).
+// Approximate radial offset (px) used for the virtual arc of same-ring
+// peer-adjacency links (§6.1a).  The arc is placed INSIDE the shared ring's
+// own band (r_edge − offset), not in the outward gap, so it never coincides
+// with the outward-arcing routing links that arc at the gap midpoint.
 const VIRTUAL_GAP_PX = 20;
 
 /**
@@ -467,10 +470,12 @@ function radialLinkPath(sourceNode, targetNode, linkDatum) {
 
   if (sourceNode.ring === targetNode.ring) {
     // §6.1a — same-ring peer-adjacency exception.
+    // Arc is placed INSIDE the ring band (r_edge − offset) so it never
+    // overlaps with the outward routing arcs that arc at the gap midpoint.
     const a_src = (sourceNode.startAngle + sourceNode.endAngle) / 2;
     const a_tgt = (targetNode.startAngle + targetNode.endAngle) / 2;
     const r_edge = sourceNode.outerRadius;
-    const r_virtual = r_edge + VIRTUAL_GAP_PX / 2 + laneOffset;
+    const r_virtual = r_edge - VIRTUAL_GAP_PX / 2 + laneOffset;
     return makeTreePath(r_edge, a_src, r_virtual, a_src, a_tgt, r_edge, a_tgt);
   }
 

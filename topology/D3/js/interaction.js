@@ -50,7 +50,7 @@ export function initInteraction(root, layoutNodes, links) {
   // Build node→link-key index, omitting pod→rack containment links (not drawn)
   const nodeLinksIdx = buildNodeLinksIndex(layoutNodes, links, nodeById);
 
-  const visible = { data: true, mgmt: true, shared: true };
+  const visible = { data: true, mgmt: true, shared: true, peer_adjacency: true };
 
   root.selectAll('.node-arc')
     .style('cursor', 'pointer')
