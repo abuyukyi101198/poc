@@ -54,6 +54,8 @@
 
   <main class="chart-container">
     <svg id="stackview" role="img" aria-label="Multi-pod stack view diagram"></svg>
+    <!-- §12 connector overlay — bezier line tying the selected stack column to the disc -->
+    <svg id="connector-overlay" role="presentation" aria-hidden="true" focusable="false"></svg>
     <div class="disc-wrapper">
       <svg id="topology" role="img" aria-label="Radial topology diagram"></svg>
     </div>
@@ -144,6 +146,120 @@
     }
 
     /**
+     * renderConnector(podId) — §12 flat dendrogram connector between the Stack
+     * View and Disc View.
+     *
+     * Draws a classic orthogonal dendrogram for every selectable pod column:
+     *   • A thin vertical stub drops from each column's bottom-centre to a shared
+     *     horizontal bar that sits halfway between the stack and disc.
+     *   • A small terminus dot marks where each inactive stub meets the bar.
+     *   • The active column's stub is highlighted and its path continues with an
+     *     orthogonal jog at bar-level to the disc's horizontal centre, then drops
+     *     straight to the disc top — a two-elbow flat dendrogram connection.
+     *   • A small arrival dot marks the disc entry point.
+     *
+     * Called after every render that changes the selection, and on window resize.
+     * Clears itself (podId = null) when no stack is visible.
+     */
+    function renderConnector(podId) {
+      const overlay = document.getElementById('connector-overlay');
+      if (!overlay) return;
+      overlay.innerHTML = '';
+
+      if (!podId) return;
+
+      const stackEl = document.getElementById('stackview');
+      const topoEl  = document.getElementById('topology');
+      const contEl  = document.querySelector('.chart-container');
+      if (!stackEl || !topoEl || !contEl) return;
+      if (stackEl.style.display === 'none') return;
+
+      const stackRect = stackEl.getBoundingClientRect();
+      const topoRect  = topoEl.getBoundingClientRect();
+      const contRect  = contEl.getBoundingClientRect();
+      if (topoRect.width === 0 || topoRect.height === 0) return;
+
+      // All selectable columns, each identified by its data-pod hit-target rect
+      const hitEls = Array.from(
+          stackEl.querySelectorAll('.stack-hit-targets rect[data-pod]')
+      );
+      if (hitEls.length === 0) return;
+
+      const cols = hitEls.map(el => {
+        const r = el.getBoundingClientRect();
+        return { id: el.getAttribute('data-pod'), cx: r.left + r.width / 2 - contRect.left };
+      });
+
+      const activeCol = cols.find(c => c.id === podId);
+      if (!activeCol) return;
+
+      // Y coordinates in container-relative pixels
+      const yStack = stackRect.bottom                   - contRect.top;
+      const yDisc  = topoRect.top                       - contRect.top;
+      const xDisc  = topoRect.left + topoRect.width / 2 - contRect.left;
+      const yBar   = (yStack + yDisc) / 2;              // bar sits exactly at midpoint
+      if (yDisc <= yStack + 4) return;                  // not enough room to draw
+
+      const xMin = Math.min(...cols.map(c => c.cx));
+      const xMax = Math.max(...cols.map(c => c.cx));
+
+      // Size overlay to container (1 SVG unit = 1 CSS px)
+      overlay.setAttribute('viewBox', `0 0 ${contRect.width} ${contRect.height}`);
+      overlay.setAttribute('width',   contRect.width);
+      overlay.setAttribute('height',  contRect.height);
+
+      const ns  = 'http://www.w3.org/2000/svg';
+
+      // Shared style tokens
+      const DIM_STROKE = 'var(--text-secondary)';
+      const DIM_OPACITY = '0.22';
+      const ACT_OPACITY = '0.70';
+
+      function mkEl(tag, attrs) {
+        const el = document.createElementNS(ns, tag);
+        Object.entries(attrs).forEach(([k, v]) => el.setAttribute(k, v));
+        overlay.appendChild(el);
+        return el;
+      }
+
+      // ── 1. Horizontal bar spanning all column stubs ───────────────────────
+      mkEl('line', {
+        x1: xMin.toFixed(1), y1: yBar.toFixed(1),
+        x2: xMax.toFixed(1), y2: yBar.toFixed(1),
+        stroke: DIM_STROKE, 'stroke-width': '1', opacity: DIM_OPACITY,
+      });
+
+      // ── 2. Inactive stubs ─────────────────────────────────────────────────
+      cols.filter(c => c.id !== podId).forEach(col => {
+        mkEl('line', {
+          x1: col.cx.toFixed(1), y1: yStack.toFixed(1),
+          x2: col.cx.toFixed(1), y2: yBar.toFixed(1),
+          stroke: DIM_STROKE, 'stroke-width': '1', opacity: DIM_OPACITY,
+        });
+      });
+
+      // ── 3. Active two-elbow dendrogram path ───────────────────────────────
+      // Drops from column → jogs horizontally at yBar to disc centre x →
+      // drops straight into the disc, overlapping the SVG top by DISC_OVERLAP px.
+      const DISC_OVERLAP = 12;
+      mkEl('path', {
+        d: [
+          `M ${activeCol.cx.toFixed(1)},${yStack.toFixed(1)}`,
+          `L ${activeCol.cx.toFixed(1)},${yBar.toFixed(1)}`,
+          `L ${xDisc.toFixed(1)},${yBar.toFixed(1)}`,
+          `L ${xDisc.toFixed(1)},${(yDisc + DISC_OVERLAP).toFixed(1)}`,
+        ].join(' '),
+        fill: 'none',
+        stroke: DIM_STROKE, 'stroke-width': '1', opacity: ACT_OPACITY,
+      });
+    }
+
+    // Re-draw connector on resize (disc and stack change screen position/size)
+    window.addEventListener('resize', () => {
+      if (activeOption === 'D') renderConnector(selectedPodId);
+    });
+
+    /**
      * renderDiscView(nodes, links, meta, selectedPodId) — everything that
      * used to be inline in renderOption() for the Disc View half of the
      * page. Factored out so a Stack View pod click (§12.10) can re-render
@@ -199,6 +315,7 @@
           const filtered = filterToPod(nodes, links, selectedPodId);
           renderDiscView(filtered.nodes, filtered.links, meta, selectedPodId);
           renderStackAndWire(nodes, links, meta);
+          renderConnector(selectedPodId);
         },
       });
     }
@@ -221,12 +338,14 @@
         const filtered = filterToPod(nodes, links, selectedPodId);
         renderDiscView(filtered.nodes, filtered.links, meta, selectedPodId);
         renderStackAndWire(nodes, links, meta);
+        renderConnector(selectedPodId);
       } else {
         // Single-pod option — collapse the stack strip entirely so the disc
         // view gets the full available vertical space.
         stackSvg.innerHTML = '';
         stackSvg.style.display = 'none';
         renderDiscView(nodes, links, meta, null);
+        renderConnector(null);
       }
 
       activeOption = option;

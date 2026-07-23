@@ -301,7 +301,8 @@ body {
 /* ── Chart container ──────────────────────────────────────────────────────── */
 /* Flex column holding the stack strip (#stackview, shown only for Option D)
    and the disc wrapper below it. The stack is hidden (display:none) for
-   single-pod options so the disc gets the full available vertical space. */
+   single-pod options so the disc gets the full available vertical space.
+   position:relative anchors the #connector-overlay absolutely inside it. */
 .chart-container {
   flex: 1;
   min-height: 0;
@@ -310,6 +311,22 @@ body {
   align-items: center;
   width: 100%;
   padding: 0;
+  position: relative;
+  gap: 0;
+}
+
+/* §12 connector overlay — absolutely covers the entire .chart-container so
+   the bezier path can span from the active stack column down to the disc.
+   pointer-events:none keeps all chart interactions unaffected. */
+#connector-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: visible;
+  z-index: 1;
 }
 
 /* Stack strip — shown only for multi-pod options (Option D); hidden via
@@ -338,7 +355,7 @@ body {
   justify-content: center;
   overflow: hidden;
   width: 100%;
-  padding: 12px 48px 16px;
+  padding: 8px 48px 16px;
 }
 
 #topology {
