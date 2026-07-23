@@ -30,7 +30,100 @@
     >
       <span class="theme-toggle-icon" aria-hidden="true">☀</span>
     </button>
+    <button
+      id="help-toggle"
+      class="theme-toggle-btn help-toggle-btn"
+      type="button"
+      aria-pressed="false"
+      aria-label="Open help panel"
+      aria-controls="help-panel"
+    >
+      <span class="theme-toggle-icon" aria-hidden="true">?</span>
+    </button>
   </header>
+
+  <!-- Help / About side panel — toggled by #help-toggle, closed by default -->
+  <aside id="help-panel" class="help-panel" role="dialog" aria-label="About this visualization" hidden>
+    <div class="help-panel-header">
+      <h2>About this Visualization</h2>
+      <button id="help-close" class="help-close-btn" type="button" aria-label="Close help panel">×</button>
+    </div>
+
+    <div class="help-panel-body">
+      <p>
+        This chart shows a datacenter network as concentric rings (<strong>Disc View</strong>) or, for
+        large multi-pod deployments, as a mirrored layered chart (<strong>Stack View</strong>). Both views
+        draw the same underlying topology — a set of routing/containment hierarchies that all share
+        physical racks and servers.
+      </p>
+
+      <div class="help-section">
+        <h3>Why three chart techniques, combined?</h3>
+        <ul>
+          <li>
+            <strong>Sugiyama-style layered layout</strong> — each ring (Pod, Spine, Leaf, Rack, Server…)
+            is one layer. Nodes within a ring are ordered to minimize link crossings with the ring next to
+            it, the same goal as a classic layered/hierarchical graph drawing.
+          </li>
+          <li>
+            <strong>Radial dendrogram geometry</strong> — instead of straight horizontal bands, layers are
+            bent into concentric circles. Every ring keeps a full 360° of arc regardless of depth, so the
+            outermost ring (Server) — which has the most nodes — gets the most space, and links read as
+            smooth radial-then-circular "tree of life" paths rather than straight diagonal lines.
+          </li>
+          <li>
+            <strong>Icicle-chart containment</strong> (Stack View only) — at multi-pod scale, giving every
+            pod its own angular wedge would leave too little room per pod. Stack View switches to a
+            partition/icicle layout instead: each pod is a column, and a parent's box width is simply the
+            union of its children's widths — the same rule used by flame graphs. This scales to many pods
+            far better than a single disc.
+          </li>
+        </ul>
+        <p>
+          In short: <em>Sugiyama</em> decides ring order/crossing-minimization, the
+          <em>radial dendrogram</em> decides how a single pod is drawn in detail, and the
+          <em>icicle chart</em> takes over for the zoomed-out, many-pod overview. Clicking a Stack View
+          column drills into that pod's full Disc View.
+        </p>
+      </div>
+
+      <div class="help-section">
+        <h3>Reading the chart</h3>
+        <ul>
+          <li>Rings, inner → outer: Pod → Superspine → Spine → Leaf → Rack → Server (some rings are
+            absent at smaller scales — see the Option tabs).</li>
+          <li>Arc width = relative size (server count) of that node's subtree.</li>
+          <li><span class="help-plane-dot data" aria-hidden="true"></span>Orange = Data plane link.</li>
+          <li><span class="help-plane-dot mgmt" aria-hidden="true"></span>Purple = Management plane link.</li>
+          <li><span class="help-plane-dot shared" aria-hidden="true"></span>Grey = physical containment
+            link (rack → server).</li>
+          <li><span class="help-plane-dot peer" aria-hidden="true"></span>Gold = peer link (e.g.
+            ToR-to-ToR).</li>
+          <li><span class="help-plane-dot border" aria-hidden="true"></span>Sage green = Border Leaf
+            (external/WAN connectivity point).</li>
+        </ul>
+      </div>
+
+      <div class="help-section">
+        <h3>Interactions</h3>
+        <ul>
+          <li><strong>Hover a node</strong> — highlights its full ancestor lineage (all parents up to the
+            Pod) and dims everything unrelated. Multiple parents may light up at once, since a rack or
+            leaf can have more than one upstream device.</li>
+          <li><strong>Hover any node</strong> — shows a detail tooltip (weight, plane, trust tier, AZ,
+            MAAS controller IDs, etc.) — only sections with data are shown.</li>
+          <li><strong>Plane toggle buttons</strong> — show/hide Data, Management, Containment, or Peer
+            Adjacency links independently. Ring geometry never changes, only link visibility.</li>
+          <li><strong>Option tabs (A–D)</strong> — switch between reference deployment sizes, from a
+            single switch/rack to a full multi-pod fabric.</li>
+          <li><strong>Stack View column click</strong> (Option D only) — drills Disc View into that pod
+            alone.</li>
+          <li><strong>Theme toggle (☀/☾)</strong> — switches dark/light color scheme; your choice is
+            remembered.</li>
+        </ul>
+      </div>
+    </div>
+  </aside>
 
   <!-- Option tab strip (§8.1) -->
   <nav class="option-tabs" role="tablist" aria-label="Reference deployment options">
@@ -94,10 +187,13 @@
     import { initInteraction } from './js/interaction.js';
     import { initTooltip } from './js/tooltip.js';
     import { initThemeToggle } from './js/theme.js';
+    import { initHelpPanel } from './js/help.js';
     import { renderStackView } from './js/stackview.js';
 
     // §11.6 theme toggle — applied independently of chart rendering
     initThemeToggle('#theme-toggle');
+    // Help panel — closed by default, toggled by the symbol-only '?' button
+    initHelpPanel('#help-toggle', '#help-panel', '#help-close');
 
     // Map option letter → fixture module path
     const FIXTURE_PATHS = {

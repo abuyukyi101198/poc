@@ -242,6 +242,131 @@ body {
   line-height: 1;
 }
 
+/* Help toggle — symbol-only '?' button, same visual language as the theme
+   toggle, positioned immediately to its left (button width 30px + 8px gap). */
+.help-toggle-btn {
+  right: 70px;
+}
+
+/* ── Help panel — toggleable side panel (About / interaction guide) ─────── */
+/* Fixed-position slide-in panel from the right edge, closed by default via
+   the [hidden] attribute (toggled by help.js). Reuses the same surface/
+   border/shadow language as .tooltip-panel so it feels native to the rest
+   of the chart's floating UI chrome. */
+.help-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(480px, 92vw);
+  z-index: 2000;
+  background: var(--panel-bg);
+  border-left: 1px solid var(--border-subtle);
+  box-shadow: -4px 0 20px rgba(0, 0, 0, 0.35);
+  overflow-y: auto;
+  padding: 20px 22px 32px;
+  font-family: 'Ubuntu', -apple-system, 'Segoe UI', sans-serif;
+  color: var(--text-primary);
+}
+
+.help-panel[hidden] {
+  display: none;
+}
+
+.help-panel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.help-panel-header h2 {
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  line-height: 1.3;
+}
+
+.help-close-btn {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--control-border);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 2px;
+  transition: color 0.12s ease, border-color 0.12s ease;
+}
+
+.help-close-btn:hover {
+  color: var(--text-primary);
+  border-color: var(--control-border-hover);
+}
+
+.help-panel-body p {
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--text-primary);
+  margin-bottom: 12px;
+}
+
+.help-section {
+  margin-bottom: 16px;
+}
+
+.help-section h3 {
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--divider-subtle);
+}
+
+.help-section ul {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.help-section li {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-primary);
+}
+
+.help-section strong {
+  font-weight: 500;
+}
+
+/* Small inline colour dots illustrating the link palette (§6.2), reusing
+   the same themed hover-strength colour tokens the SVG links resolve
+   against, so the legend stays accurate across theme switches. */
+.help-plane-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 6px;
+  border-radius: 50%;
+  vertical-align: -1px;
+}
+
+.help-plane-dot.data   { background: var(--link-data-hover); }
+.help-plane-dot.mgmt   { background: var(--link-mgmt-hover); }
+.help-plane-dot.shared { background: var(--link-shared-hover); }
+.help-plane-dot.peer   { background: var(--link-peer-hover); }
+.help-plane-dot.border { background: var(--border-leaf-fill); }
+
 /* ── Option tab strip (§8.1) ─────────────────────────────────────────────── */
 /* Flat, compact tabs below the header — same Vanilla visual language as the
    plane-toggle strip (§6.3, §8.2): no drop shadows, ≤2px border radius,
