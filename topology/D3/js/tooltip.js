@@ -15,17 +15,22 @@
  *   5. Categorization footer — trust_tier / failure_domain_role
  *   6. Metadata description (italic, muted)
  *
- * Exports: initTooltip(root, layoutNodes)
+ * Exports: initTooltip(root, layoutNodes, ringNames?)
  */
 
 import { getNodeFill } from './render.js';
 import { getAZColor } from './layout.js';
 
-const RING_NAMES = { R1: 'Pod', R3: 'Spine', R4: 'Leaf', R5: 'Rack', R6: 'Server' };
+const DEFAULT_RING_NAMES = { R0: 'Region', R1: 'Pod', R2: 'Superspine', R3: 'Spine', R4: 'Leaf', R5: 'Rack', R6: 'Server' };
 const PANEL_ID = 'tooltip-panel';
 const OFFSET_PX = 12;
 
-export function initTooltip(root, layoutNodes) {
+// Module-level ring name map — updated by initTooltip() on each option switch
+// so that ringTypeLabel() (module-level fn) can resolve per-option overrides.
+let RING_NAMES = { ...DEFAULT_RING_NAMES };
+
+export function initTooltip(root, layoutNodes, ringNamesOverrides = {}) {
+  RING_NAMES = { ...DEFAULT_RING_NAMES, ...ringNamesOverrides };
   const nodeById = new Map(layoutNodes.map(n => [n.id, n]));
   const rackAzById = new Map(
     layoutNodes.filter(n => n.ring === 'R5').map(n => [n.id, n.availability_zone])

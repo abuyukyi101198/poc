@@ -12,7 +12,11 @@
  *   Three pill buttons control which link planes are visible.
  *
  * Ring depth order (root → leaves):
- *   R1 (Pod) = 0 → R3 (Spine) = 1 → R4 (Leaf) = 2 → R5 (Rack) = 3 → R6 (Server) = 4
+ *   R1 (Pod) = 0 → R2 (Superspine) = 1 → R3 (Spine) = 2 → R4 (Leaf) = 3 → R5 (Rack) = 4 → R6 (Server) = 5
+ *
+ * R2 is only populated in Option D; for all other options R2 nodes are absent
+ * so RING_DEPTH[R2] is never evaluated.  It must be present here so that BFS
+ * correctly treats super-spines as ancestors of spines (not the reverse).
  *
  * Exports: initInteraction(root, layoutNodes, links)
  */
@@ -25,7 +29,7 @@ import { linkColorKey, LINK_COLORS, LINK_HOVER_COLORS } from './render.js';
 const DIM_OPACITY = 0.07;
 
 /** Maps ring id → depth (0 = root/pod, 4 = server/leaf). */
-const RING_DEPTH = { R1: 0, R3: 1, R4: 2, R5: 3, R6: 4 };
+const RING_DEPTH = { R1: 0, R2: 1, R3: 2, R4: 3, R5: 4, R6: 5 };
 
 const RESTING_LINK_OPACITY = { data: 1, mgmt: 1, shared: 1, peer_adjacency: 1 };
 
@@ -54,9 +58,16 @@ export function initInteraction(root, layoutNodes, links) {
       onFocus(root, d, nodeLinksIdx, nodeById))
     .on('mouseleave.lineage', () => onBlur(root));
 
-  wireToggles(root, visible);
+  const teardown = wireToggles(root, visible);
 
   console.log('[topology] Phase 4 interaction initialised — lineage hover + plane toggles active');
+
+  // Return a cleanup function for option switching — removes event listeners
+  // and plane-toggle handlers so they don't accumulate across re-renders.
+  return function cleanup() {
+    root.selectAll('.node-arc').on('mouseenter.lineage', null).on('mouseleave.lineage', null);
+    if (teardown) teardown();
+  };
 }
 
 // ── Hover handlers ────────────────────────────────────────────────────────────
@@ -160,7 +171,7 @@ function collectLineage(startId, nodeLinksIdx, nodeById) {
 // ── Plane toggles ─────────────────────────────────────────────────────────────
 
 function wireToggles(root, visible) {
-  d3.selectAll('.toggle-btn').on('click', function() {
+  const handler = function() {
     const plane = d3.select(this).attr('data-plane');
     if (!plane) return;
 
@@ -171,7 +182,12 @@ function wireToggles(root, visible) {
 
     root.selectAll(`.link[data-plane="${plane}"]`)
       .attr('display', nowOn ? null : 'none');
-  });
+  };
+
+  d3.selectAll('.toggle-btn').on('click.interaction', handler);
+
+  // Return teardown so the option-switcher can remove this listener
+  return () => d3.selectAll('.toggle-btn').on('click.interaction', null);
 }
 
 // ── Node → link-key index ─────────────────────────────────────────────────────

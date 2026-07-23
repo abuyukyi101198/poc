@@ -19,21 +19,24 @@
  */
 
 import * as d3 from 'd3';
-import { computeLayout, CONFIG, RING_BANDS, RING_COLORS, PLANE_TINTS, BORDER_LEAF_FILL, getAZColor } from './layout.js';
+import { computeLayout, CONFIG, RING_ORDER, RING_COLORS, PLANE_TINTS, BORDER_LEAF_FILL, getAZColor } from './layout.js';
 
 // Minimum arc span (degrees) at which an inline label is shown.
 // Arcs narrower than this degrade to tooltip-only (§8.4).
 const MIN_LABEL_DEG = {
-  R1: 0,    // Pod: always labelled
+  R1: 0,    // Pod / Border Leaf root: always labelled (single full-circle arc)
+  R2: 3,    // Superspine
   R3: 3,    // Spines: large arcs, always visible
   R4: 3,    // Leaves
   R5: 4,    // Racks
   R6: 6,    // Servers: small arcs — only label if there is room
 };
 
-// Human-readable ring names for the legend band
-const RING_NAMES = {
+// Default human-readable ring names (can be overridden per-option via meta.ringNames)
+const DEFAULT_RING_NAMES = {
+  R0: 'Region',
   R1: 'Pod',
+  R2: 'Superspine',
   R3: 'Spine',
   R4: 'Leaf',
   R5: 'Rack',
@@ -88,9 +91,9 @@ export function linkColorKey(d) {
  *     priority since AZ is a whole-rack tenancy signal, not a plane one.
  *   - R4 Border Leaves (`leaf_role: "border"`) get the dedicated Sage fill,
  *     regardless of `plane`.
- *   - R3/R4 routing nodes otherwise get their plane-tinted fill (Data/Mgmt).
- *   - All other rings (R1, R6 — containment-only, and R5 with no AZ) get the
- *     flat neutral RING_COLORS fill.
+ *   - R2/R3/R4 routing nodes get their plane-tinted fill (Data/Mgmt).
+ *   - All other rings (R0, R1, R5, R6 — containment-only, and R5 with no AZ) get
+ *     the flat neutral RING_COLORS fill.
  */
 export function getNodeFill(node) {
   if (node.ring === 'R5') {
@@ -120,14 +123,19 @@ export function getArcOverrideStroke(node, rackAzById) {
 const TWO_PI = 2 * Math.PI;
 
 /**
- * init(rootSelector)
+ * init(rootSelector, nodes, links, meta)
  * Renders ring geometry into the SVG element matched by rootSelector.
  * Creates a `links` placeholder group in the correct DOM stacking order
  * so Phase 2's drawLinks() can populate it without re-ordering elements.
+ * Accepts optional nodes/links/meta so any option fixture can be rendered.
  * Returns { svg, root, layoutNodes, links }.
  */
-export function init(rootSelector = '#topology') {
-  const { layoutNodes, links } = computeLayout();
+export function init(rootSelector = '#topology', rawNodes = null, rawLinks = null, meta = {}) {
+  const { layoutNodes, links, bands, populatedRings } =
+    rawNodes ? computeLayout(rawNodes, rawLinks) : computeLayout();
+
+  // Per-option ring name overrides (e.g. R4→"TOR" for Options A/B).
+  const RING_NAMES = { ...DEFAULT_RING_NAMES, ...(meta.ringNames ?? {}) };
 
   // Rack id → availability_zone, for the R6 AZ-override stroke check (§7.8).
   const rackAzById = new Map(
@@ -149,7 +157,7 @@ export function init(rootSelector = '#topology') {
   root.append('g')
     .attr('class', 'ring-guides')
     .selectAll('circle')
-    .data(Object.values(RING_BANDS))
+    .data(Object.values(bands))
     .join('circle')
       .attr('r',            d => d.outerRadius + 2)
       .attr('fill',         'none')
@@ -207,16 +215,9 @@ export function init(rootSelector = '#topology') {
       .text(d => d.label);
 
   // ── Ring-name labels ──────────────────────────────────────────────────────────
-  // Small italic labels at 12 o'clock, placed in the EMPTY inter-ring gap just
-  // outside each ring's own outer radius (i.e. between this ring and the next
-  // one out) rather than inside the ring's own band — that previous placement
-  // (innerRadius + 8, still within the band) could coincide with that same
-  // ring's own arc labels (most visibly for R1 Pod, whose single full-circle
-  // arc always centers its own label at angle 0 too). Sitting in the gap means
-  // no node arc — and therefore no arc label — is ever painted at that radius,
-  // regardless of which angle an arc's label lands on. The outermost ring
-  // (R6) has no next ring, so it uses a fixed offset beyond its own outer edge.
-  const ringBandEntries = Object.entries(RING_BANDS);
+  // Small italic labels at 12 o'clock, placed in the inter-ring gap just
+  // outside each ring's own outer radius so they never overlap arc labels.
+  const ringBandEntries = populatedRings.map(r => [r, bands[r]]);
   const ringLabelData = ringBandEntries.map(([ring, band], i) => {
     const nextBand = ringBandEntries[i + 1]?.[1];
     const radius = nextBand
@@ -250,7 +251,7 @@ export function init(rootSelector = '#topology') {
     .attr('dominant-baseline', 'central')
     .attr('font-size',         '11px')
     .attr('fill',              'var(--text-secondary)')    // §11.1 secondary/muted text, theme-aware
-    .text('Option C');
+    .text(meta?.option ? `Option ${meta.option}` : '');
 
   // Note: MAAS control-plane rack-controller data (§7.7) is surfaced exclusively
   // via the tooltip's "MAAS Control Plane" section (§8.6) — no arc badge is
@@ -263,7 +264,7 @@ export function init(rootSelector = '#topology') {
 
   // Return for use by subsequent phases.
   // Phase 2 calls drawLinks(root, layoutNodes, links) after this.
-  return { svg, root, layoutNodes, links };
+  return { svg, root, layoutNodes, links, bands, populatedRings };
 }
 
 
@@ -296,7 +297,8 @@ function arcLabelTransform(node) {
  */
 function arcLabelFontSize(node) {
   switch (node.ring) {
-    case 'R1': return '11px';
+    case 'R1': return '10px';
+    case 'R2': return '9px';
     case 'R3': return '9px';
     case 'R4': return '8.5px';
     case 'R5': return '8px';

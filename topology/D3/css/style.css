@@ -47,11 +47,14 @@
   --neutral-swatch:     #C9C2B8;
 
   /* Ring/node fills — neutral containment rings (§11.3) */
+  --ring-r0: #1A1917;   /* Region  — deepest neutral (Option D full spec, not yet populated) */
   --ring-r1: #2E2C2A;   /* Pod    — darkest neutral, innermost anchor */
   --ring-r5: #3A3835;   /* Rack   — mid neutral */
   --ring-r6: #454340;   /* Server — lightest neutral, outermost */
 
   /* Ring/node fills — plane-tinted routing rings (§11.3) */
+  --plane-r2-data: #4A2213;   /* Superspine — Ubuntu Orange, deeper than R3 (innermost routing ring) */
+  --plane-r2-mgmt: #3D1730;   /* Superspine — Aubergine, deeper than R3 */
   --plane-r3-data: #572A19;   /* Spine — vivid Orange dark tint */
   --plane-r3-mgmt: #4A1C39;   /* Spine — vivid Aubergine dark tint */
   --plane-r4-data: #6B331F;   /* Leaf  — vivid Orange, lighter than R3 */
@@ -105,17 +108,15 @@
 
   /* Ring/node fills — neutral containment rings, recovered from the
      pre-dark-theme Phase 1–4 palette (git history: commit fd6b6a9). */
+  --ring-r0: #E8E3DE;   /* Region  — very light warm grey (light theme) */
   --ring-r1: #D4CDC8;   /* Pod    — light warm grey, innermost anchor */
   --ring-r5: #908A84;   /* Rack   — darkest neutral of the three */
   --ring-r6: #DDD8D3;   /* Server — lightest, outermost, keeps it airy */
 
-  /* Ring/node fills — plane-tinted routing rings. Derived directly from the
-     official Canonical/Ubuntu brand base hues (Orange #E95420, Aubergine
-     #77216F) tinted with white for a light canvas — R3 (Spine) at a lower
-     white-mix so it reads as the more saturated/anchoring tier, R4 (Leaf) at
-     a higher white-mix so it's visibly lighter outward, mirroring the dark
-     theme's R3→R4 gradient. */
-  --plane-r3-data: #EE7A51;   /* Spine — Ubuntu Orange, light tint */
+  /* Ring/node fills — plane-tinted routing rings */
+  --plane-r2-data: #D96A3A;   /* Superspine — Ubuntu Orange, deeper tint than R3 */
+  --plane-r2-mgmt: #7A3D74;   /* Superspine — Aubergine, deeper tint than R3 */
+  --plane-r3-data: #EE7A51;   /* Spine — saturated peach/Orange */
   --plane-r3-mgmt: #95528F;   /* Spine — Aubergine, light tint */
   --plane-r4-data: #F19575;   /* Leaf  — Ubuntu Orange, lighter tint than R3 */
   --plane-r4-mgmt: #AB75A6;   /* Leaf  — Aubergine, lighter tint than R3 */
@@ -236,6 +237,60 @@ body {
 .theme-toggle-btn .theme-toggle-icon {
   font-size: 14px;
   line-height: 1;
+}
+
+/* ── Option tab strip (§8.1) ─────────────────────────────────────────────── */
+/* Flat, compact tabs below the header — same Vanilla visual language as the
+   plane-toggle strip (§6.3, §8.2): no drop shadows, ≤2px border radius,
+   border-bottom accent on the active tab instead of a pill fill so the tab
+   metaphor reads clearly while staying visually light. */
+.option-tabs {
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  padding: 0 32px 20px;
+  flex-wrap: wrap;
+}
+
+.option-tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 7px 18px 5px;
+  border: 1px solid var(--control-border);
+  border-bottom: 2px solid transparent;
+  background: var(--panel-bg);
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-radius: 2px 2px 0 0;
+  font-family: 'Ubuntu', -apple-system, 'Segoe UI', sans-serif;
+  transition: border-color 0.12s ease, color 0.12s ease;
+  min-width: 90px;
+}
+
+.option-tab:hover:not(.active) {
+  border-color: var(--control-border-hover);
+  color: var(--text-primary);
+}
+
+.option-tab.active {
+  border-color: var(--control-border);
+  border-bottom-color: #E95420;   /* Ubuntu Orange accent — same both themes */
+  color: var(--text-primary);
+}
+
+.option-tab-label {
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+.option-tab-sub {
+  font-size: 10px;
+  font-weight: 400;
+  letter-spacing: 0.01em;
+  margin-top: 1px;
+  opacity: 0.7;
 }
 
 /* ── Chart container ──────────────────────────────────────────────────────── */
@@ -390,7 +445,9 @@ footer {
 }
 
 /* Chip colours — must match RING_COLORS / PLANE_TINTS / BORDER_LEAF_FILL var()s */
+.legend-ring[data-ring="R0"]::before { background-color: var(--ring-r0); }
 .legend-ring[data-ring="R1"]::before { background-color: var(--ring-r1); }
+.legend-ring[data-ring="R2"]::before { background-color: var(--plane-r2-data); }   /* Superspine — Data tint (illustrative) */
 .legend-ring[data-ring="R3"]::before { background-color: var(--plane-r3-data); }   /* Spine — Data tint (illustrative) */
 .legend-ring[data-ring="R4"]::before { background-color: var(--plane-r4-data); }   /* Leaf — Data tint (illustrative) */
 .legend-ring[data-ring="R5"]::before { background-color: var(--ring-r5); }

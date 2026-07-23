@@ -3,14 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Datacenter Network Topology — Option C</title>
+  <title>Datacenter Network Topology</title>
   <link rel="stylesheet" href="css/style.css">
-
-  <!--
-    Import map: maps the bare specifier "d3" to D3 v7 ESM build on jsDelivr.
-    No bundler, no build step — open index.html directly in a browser or via
-    any trivial static server (e.g. `python3 -m http.server`).
-  -->
   <script type="importmap">
     {
       "imports": {
@@ -23,15 +17,10 @@
 
   <header class="page-header">
     <h1>Datacenter Network Topology</h1>
-    <p class="subtitle">
+    <p class="subtitle" id="page-subtitle">
       Option C &nbsp;·&nbsp; Standard Leaf-Spine Pod
       &nbsp;·&nbsp; Radial Layered (Sugiyama) Dendrogram Graph
     </p>
-    <!--
-      §11.6 dark/light theme toggle — icon-only, labelled for assistive tech
-      via aria-label/aria-pressed only. Icon glyph set by theme.js to reflect
-      the mode you'd switch TO.
-    -->
     <button
       id="theme-toggle"
       class="theme-toggle-btn"
@@ -43,20 +32,30 @@
     </button>
   </header>
 
+  <!-- Option tab strip (§8.1) -->
+  <nav class="option-tabs" role="tablist" aria-label="Reference deployment options">
+    <button class="option-tab" role="tab" data-option="A" aria-selected="false">
+      <span class="option-tab-label">Option A</span>
+      <span class="option-tab-sub">Very Small</span>
+    </button>
+    <button class="option-tab" role="tab" data-option="B" aria-selected="false">
+      <span class="option-tab-label">Option B</span>
+      <span class="option-tab-sub">Small Resilient</span>
+    </button>
+    <button class="option-tab active" role="tab" data-option="C" aria-selected="true">
+      <span class="option-tab-label">Option C</span>
+      <span class="option-tab-sub">Leaf-Spine Pod</span>
+    </button>
+    <button class="option-tab" role="tab" data-option="D" aria-selected="false">
+      <span class="option-tab-label">Option D</span>
+      <span class="option-tab-sub">Multi-Pod</span>
+    </button>
+  </nav>
+
   <main class="chart-container">
-    <!--
-      SVG dimensions and viewBox are set programmatically by render.js.
-      The element must exist in the DOM before the module executes.
-    -->
-    <svg id="topology" role="img" aria-label="Radial topology diagram — Option C datacenter pod"></svg>
+    <svg id="topology" role="img" aria-label="Radial topology diagram"></svg>
   </main>
 
-  <!--
-    Legend + controls bar.
-    Row 1 (controls): plane toggle buttons that show/hide link sets (§8.2).
-    Row 2 (legend):   static ring-depth key with coloured chips and an
-                      interaction hint.
-  -->
   <div class="controls" id="plane-toggles">
     <span class="controls-label">Planes:</span>
     <button class="toggle-btn active" data-plane="data">Data</button>
@@ -64,7 +63,7 @@
     <button class="toggle-btn active" data-plane="shared">Containment</button>
   </div>
 
-  <div class="ring-legend" role="list" aria-label="Ring depth key">
+  <div class="ring-legend" role="list" aria-label="Ring depth key" id="ring-legend">
     <span class="controls-label" aria-hidden="true">Rings:</span>
     <span class="legend-ring" data-ring="R1" role="listitem">Pod</span>
     <span class="legend-arrow" aria-hidden="true">→</span>
@@ -81,7 +80,7 @@
   </div>
 
   <footer>
-    <p>Option C — standard leaf-spine datacenter pod &nbsp;·&nbsp; D3.js v7</p>
+    <p>Datacenter Network Topology Reference &nbsp;·&nbsp; D3.js v7</p>
   </footer>
 
   <script type="module">
@@ -90,26 +89,123 @@
     import { initTooltip } from './js/tooltip.js';
     import { initThemeToggle } from './js/theme.js';
 
-    // Phase 8: dark/light theme toggle (§11.6) — applied before/independent
-    // of chart rendering, since colours resolve live via CSS var().
+    // §11.6 theme toggle — applied independently of chart rendering
     initThemeToggle('#theme-toggle');
 
-    // Phase 1: static ring geometry
-    const { root, layoutNodes, links } = init('#topology');
+    // Map option letter → fixture module path
+    const FIXTURE_PATHS = {
+      A: './data/option-a.js',
+      B: './data/option-b.js',
+      C: './data/option-c.js',
+      D: './data/option-d.js',
+    };
 
-    // Phase 2: plain links, plane-colour-coded
-    drawLinks(root, layoutNodes, links);
+    // Default ring names per-option for the legend (can be overridden by fixture meta)
+    const DEFAULT_RING_NAMES = { R1: 'Pod', R2: 'Superspine', R3: 'Spine', R4: 'Leaf', R5: 'Rack', R6: 'Server' };
 
+    // SVG viewport
+    const svg = document.getElementById('topology');
 
-    // Phase 4: hover/focus behaviour + plane toggles
-    initInteraction(root, layoutNodes, links);
+    let activeOption = 'C';
+    let cleanupInteraction = null;
 
-    // Phase 7: tooltip panel (§8.6) — MAAS Control Plane + Availability Zone detail
-    initTooltip(root, layoutNodes);
+    async function renderOption(option) {
+      const fixture = await import(FIXTURE_PATHS[option]);
+      const { nodes, links, meta = {} } = fixture;
+      const ringNames = { ...DEFAULT_RING_NAMES, ...(meta.ringNames ?? {}) };
 
-    window.__topology = { root, layoutNodes, links };
+      // Tear down previous render
+      if (cleanupInteraction) { cleanupInteraction(); cleanupInteraction = null; }
+      // Remove old tooltip panel so it doesn't linger
+      document.getElementById('tooltip-panel')?.remove();
+      // Clear SVG
+      svg.innerHTML = '';
+
+      // Render chart
+      const { root, layoutNodes, links: resolvedLinks, populatedRings } =
+        init('#topology', nodes, links, meta);
+      drawLinks(root, layoutNodes, resolvedLinks);
+      cleanupInteraction = initInteraction(root, layoutNodes, resolvedLinks);
+      initTooltip(root, layoutNodes, meta.ringNames ?? {});
+
+      // Update page header
+      document.getElementById('page-subtitle').textContent =
+        meta.subtitle ?? `Option ${option}`;
+      document.title = `Datacenter Topology — ${meta.label ?? `Option ${option}`}`;
+      svg.setAttribute('aria-label', `Radial topology diagram — ${meta.label ?? `Option ${option}`}`);
+
+      // Update legend chips and labels to match populated rings
+      updateLegend(populatedRings, ringNames, meta);
+
+      // Update plane toggles to active (reset on option switch)
+      document.querySelectorAll('.toggle-btn').forEach(b => b.classList.add('active'));
+
+      activeOption = option;
+      window.__topology = { root, layoutNodes, links: resolvedLinks };
+    }
+
+    function updateLegend(populatedRings, ringNames, meta) {
+      const legend = document.getElementById('ring-legend');
+      // Remove everything after the label
+      legend.innerHTML = `<span class="controls-label" aria-hidden="true">Rings:</span>`;
+
+      // Build legend entries from the populated rings (innermost to outermost)
+      // Skip R6 (Server) for the separator arrows — it's always at the end
+      const entries = [...populatedRings];
+      entries.forEach((ring, i) => {
+        const label = ringNames[ring] ?? ring;
+        const chip = document.createElement('span');
+        chip.className = 'legend-ring';
+        chip.setAttribute('data-ring', ring);
+        chip.setAttribute('role', 'listitem');
+        chip.textContent = label;
+        legend.appendChild(chip);
+
+        if (i < entries.length - 1) {
+          const arrow = document.createElement('span');
+          arrow.className = 'legend-arrow';
+          arrow.setAttribute('aria-hidden', 'true');
+          arrow.textContent = '→';
+          legend.appendChild(arrow);
+        }
+      });
+
+      // Add Border Leaf chip if any R4 border nodes exist (Option C/D)
+      const hasBorderLeaf = !['A','B'].includes(meta.option);
+      if (hasBorderLeaf && populatedRings.includes('R4')) {
+        const dot = document.createElement('span');
+        dot.className = 'legend-arrow'; dot.setAttribute('aria-hidden','true'); dot.textContent = '·';
+        legend.appendChild(dot);
+        const bl = document.createElement('span');
+        bl.className = 'legend-ring'; bl.setAttribute('data-ring','border'); bl.setAttribute('role','listitem');
+        bl.textContent = 'Border Leaf';
+        legend.appendChild(bl);
+      }
+
+      const hint = document.createElement('span');
+      hint.className = 'legend-hint';
+      hint.textContent = '· Hover any arc to focus';
+      legend.appendChild(hint);
+    }
+
+    // Tab click handler
+    document.querySelectorAll('.option-tab').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const option = btn.dataset.option;
+        if (option === activeOption) return;
+        document.querySelectorAll('.option-tab').forEach(b => {
+          b.classList.remove('active');
+          b.setAttribute('aria-selected', 'false');
+        });
+        btn.classList.add('active');
+        btn.setAttribute('aria-selected', 'true');
+        await renderOption(option);
+      });
+    });
+
+    // Initial render — Option C
+    await renderOption('C');
   </script>
 
 </body>
 </html>
-
