@@ -207,14 +207,23 @@ export function init(rootSelector = '#topology') {
       .text(d => d.label);
 
   // ── Ring-name labels ──────────────────────────────────────────────────────────
-  // Small italic labels placed just inside the inner edge of each ring band,
-  // at 12 o'clock, for orientation at a glance.
-  const ringLabelData = Object.entries(RING_BANDS).map(([ring, { innerRadius }]) => ({
-    ring,
-    label: RING_NAMES[ring] ?? ring,
-    // Place text just above (negative y) the inner boundary of the ring
-    y: -(innerRadius + 8),
-  }));
+  // Small italic labels at 12 o'clock, placed in the EMPTY inter-ring gap just
+  // outside each ring's own outer radius (i.e. between this ring and the next
+  // one out) rather than inside the ring's own band — that previous placement
+  // (innerRadius + 8, still within the band) could coincide with that same
+  // ring's own arc labels (most visibly for R1 Pod, whose single full-circle
+  // arc always centers its own label at angle 0 too). Sitting in the gap means
+  // no node arc — and therefore no arc label — is ever painted at that radius,
+  // regardless of which angle an arc's label lands on. The outermost ring
+  // (R6) has no next ring, so it uses a fixed offset beyond its own outer edge.
+  const ringBandEntries = Object.entries(RING_BANDS);
+  const ringLabelData = ringBandEntries.map(([ring, band], i) => {
+    const nextBand = ringBandEntries[i + 1]?.[1];
+    const radius = nextBand
+      ? (band.outerRadius + nextBand.innerRadius) / 2
+      : band.outerRadius + 14;
+    return { ring, label: RING_NAMES[ring] ?? ring, y: -radius };
+  });
 
   root.append('g')
     .attr('class', 'ring-name-labels')
@@ -225,7 +234,7 @@ export function init(rootSelector = '#topology') {
       .attr('x',                 0)
       .attr('y',                 d => d.y)
       .attr('text-anchor',       'middle')
-      .attr('dominant-baseline', 'auto')
+      .attr('dominant-baseline', 'middle')
       .attr('font-size',         '10px')
       .attr('font-style',        'italic')
       .attr('fill',              'var(--text-secondary)')    // §11.1 secondary/muted text, theme-aware
