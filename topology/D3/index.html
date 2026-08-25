@@ -215,6 +215,10 @@
     const LLDP_FIXTURE_INDEX = './data/generated/lldp/index.js';
 
     async function loadLldpFixtures() {
+      // A directly opened file cannot fetch the optional generated index.
+      // Reference fixtures remain available without an HTTP server.
+      if (window.location.protocol === 'file:') return [];
+
       const response = await fetch(LLDP_FIXTURE_INDEX, { method: 'HEAD' });
       if (response.status === 404) return [];
       if (!response.ok) {
