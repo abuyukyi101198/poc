@@ -202,7 +202,7 @@
     import { initHelpPanel } from './js/help.js';
     import { renderStackView } from './js/stackview.js';
     import { createViewState } from './js/view-state.js';
-    import { investigationContext, lodForScale } from './js/filters.js';
+    import { investigationContext, lodForScale, restrictInvestigationContext } from './js/filters.js';
     import { initViewport } from './js/viewport.js';
     import { initInspector } from './js/inspector.js';
     import { createMaasModel, lensLegend } from './js/maas-lenses.js';
@@ -254,15 +254,25 @@
     let cleanupViewport = null;
     let discState = null;
     let activeMaasModel = createMaasModel([]);
+    let inspectorBack = null;
 
     const viewState = createViewState(() => applyInvestigationState());
     const inspector = initInspector({
-      onSelectNode: id => selectNode(id, true),
-      onSelectLink: id => viewState.selectLink(id),
+      onSelectNode: id => {
+        rememberInspectorBack();
+        focusNode(id);
+      },
+      onSelectLink: id => {
+        rememberInspectorBack();
+        focusLink(id);
+      },
       onClose: () => {
+        clearInspectorBack();
         viewState.update({ selection: null, query: '' });
         syncInvestigationControls();
+        renderOperationalStack();
       },
+      onBack: restoreInspectorBack,
     });
 
     // §12.10 Stack View drill selection — which pod (if any) Disc View is
@@ -270,17 +280,99 @@
     // Reset to null whenever the active option changes.
     let selectedPodId = null;
 
-    function selectNode(id, focus = false) {
+    function activeInvestigationContext(state = viewState.get()) {
+      return investigationContext(activeNodes, activeLinks, state);
+    }
+
+    function stackGroupForNode(node) {
+      const usesInferredStackGroups = activeMeta.stackView?.groups?.length > 0;
+      if (!usesInferredStackGroups) {
+        return node.ring === 'R1' ? node.id : node.metadata?.pod ?? null;
+      }
+      return node.metadata?.stackGroups?.[0] ?? node.metadata?.stackGroup ?? null;
+    }
+
+    function clearInspectorBack() {
+      inspectorBack = null;
+    }
+
+    function rememberInspectorBack() {
+      inspectorBack = { selection: viewState.get().selection };
+    }
+
+    function restoreInspectorBack() {
+      const previous = inspectorBack;
+      clearInspectorBack();
+      if (!previous) return;
+      if (previous.selection?.type === 'node') {
+        focusNode(previous.selection.id);
+      } else if (previous.selection?.type === 'link') {
+        focusLink(previous.selection.id);
+      } else {
+        viewState.clearSelection();
+      }
+    }
+
+    function selectNode(id, focus = false, { preserveInspectorBack = false } = {}) {
+      if (!preserveInspectorBack) clearInspectorBack();
       viewState.selectNode(id);
       if (!focus || !discState) return;
       const node = discState.layoutNodes.find(candidate => candidate.id === id);
       if (node) discState.viewport.focusNode(node);
     }
 
+    function focusNode(id) {
+      const node = activeNodes.find(candidate => candidate.id === id);
+      const groupId = node ? stackGroupForNode(node) : null;
+      const usesStackView = activeOption === 'D' || activeMeta.stackView?.groups?.length > 1;
+      if (!node || !usesStackView || !groupId || groupId === selectedPodId) {
+        selectNode(id, true, { preserveInspectorBack: true });
+        return;
+      }
+
+      selectedPodId = groupId;
+      viewState.update({ selectedGroupId: groupId, selection: { type: 'node', id } });
+      const filtered = filterToPod(activeNodes, activeLinks, selectedPodId, activeMeta);
+      renderDiscView(filtered.nodes, filtered.links, activeMeta, selectedPodId);
+      renderStackAndWire(activeNodes, activeLinks, activeMeta);
+      renderConnector(selectedPodId);
+      requestAnimationFrame(() => {
+        const layoutNode = discState?.layoutNodes.find(candidate => candidate.id === id);
+        if (layoutNode) discState.viewport.focusNode(layoutNode);
+      });
+    }
+
+    function focusLink(id) {
+      const link = activeLinks.find(candidate => (candidate.id || `${candidate.source}→${candidate.target}`) === id);
+      if (!link) return;
+      const source = activeNodes.find(node => node.id === link.source);
+      const target = activeNodes.find(node => node.id === link.target);
+      const groupId = (source && stackGroupForNode(source)) || (target && stackGroupForNode(target));
+      const usesStackView = activeOption === 'D' || activeMeta.stackView?.groups?.length > 1;
+      const focusId = target?.id ?? source?.id;
+
+      if (usesStackView && groupId && groupId !== selectedPodId) {
+        selectedPodId = groupId;
+        viewState.update({ selectedGroupId: groupId, selection: { type: 'link', id } });
+        const filtered = filterToPod(activeNodes, activeLinks, selectedPodId, activeMeta);
+        renderDiscView(filtered.nodes, filtered.links, activeMeta, selectedPodId);
+        renderStackAndWire(activeNodes, activeLinks, activeMeta);
+        renderConnector(selectedPodId);
+      } else {
+        viewState.selectLink(id);
+      }
+
+      requestAnimationFrame(() => {
+        const layoutNode = discState?.layoutNodes.find(node => node.id === focusId);
+        if (layoutNode) discState.viewport.focusNode(layoutNode);
+      });
+    }
+
     function applyInvestigationState() {
       if (!discState) return;
       const state = viewState.get();
-      const context = investigationContext(discState.nodes, discState.links, state);
+      const fullContext = activeInvestigationContext(state);
+      const context = restrictInvestigationContext(fullContext, discState.nodes, discState.links);
       applyMaasLens(discState.root, discState.maasModel, state.maasLens);
       const selectedNode = state.selection?.type === 'node'
         ? discState.layoutNodes.find(node => node.id === state.selection.id)
@@ -294,20 +386,24 @@
       });
       inspector.render({
         selection: state.selection,
-        nodes: discState.nodes,
-        links: discState.links,
+        nodes: activeNodes,
+        links: activeLinks,
         ringNames: { ...DEFAULT_RING_NAMES, ...(discState.meta.ringNames ?? {}) },
         searchQuery: state.query,
-        searchResultIds: [...context.matchedNodeIds],
+        searchResultIds: [...fullContext.matchedNodeIds],
+        canGoBack: inspectorBack !== null,
       });
       const status = document.getElementById('lod-status');
       if (status) {
-        const count = context.active ? `${context.matchedNodeIds.size} matches · ` : '';
+        const count = fullContext.active ? `${fullContext.matchedNodeIds.size} matches` : '';
+        const visible = fullContext.active && fullContext.matchedNodeIds.size !== context.matchedNodeIds.size
+          ? ` · ${context.matchedNodeIds.size} in Disc`
+          : '';
         const coverage = discState.maasModel.coverage;
         const maasCoverage = coverage.matched
           ? ` · ${coverage.matched}/${coverage.endpoints} MAAS`
           : '';
-        status.textContent = `${count}${lod[0].toUpperCase()}${lod.slice(1)}${maasCoverage}`;
+        status.textContent = `${count}${visible}${count ? ' · ' : ''}${lod[0].toUpperCase()}${lod.slice(1)}${maasCoverage}`;
       }
     }
 
@@ -491,6 +587,7 @@
       };
       svg.onclick = event => {
         if (event.target.closest('.node-arc')) return;
+        clearInspectorBack();
         viewState.clearSelection();
       };
 
@@ -519,12 +616,15 @@
      * sync (§12.10 "selected disc highlighting").
      */
     function renderStackAndWire(nodes, links, meta) {
+      const fullContext = activeInvestigationContext();
       renderStackView('#stackview', nodes, links, meta, {
         selectedPodId,
         maasModel: activeMaasModel,
         maasLens: viewState.get().maasLens,
+        matchedNodeIds: fullContext.matchedNodeIds,
         onSelectPod: (podId) => {
           if (podId === selectedPodId) return;   // already selected — no-op, deselection not permitted
+          clearInspectorBack();
           selectedPodId = podId;
           viewState.update({ selectedGroupId: podId, selection: null });
           const filtered = filterToPod(nodes, links, selectedPodId, meta);
@@ -545,6 +645,7 @@
       activeLinks = links;
       activeMaasModel = createMaasModel(nodes);
       selectedPodId = null;
+      clearInspectorBack();
       viewState.reset();
       configureMaasControls(activeMaasModel);
       syncInvestigationControls();
@@ -627,25 +728,34 @@
 
     const searchInput = document.getElementById('topology-search');
     searchInput?.addEventListener('input', event => {
+      clearInspectorBack();
       viewState.update({ query: event.target.value });
+      renderOperationalStack();
     });
     searchInput?.addEventListener('keydown', event => {
       if (event.key === 'Escape') {
         event.preventDefault();
+        clearInspectorBack();
         viewState.update({ query: '' });
         syncInvestigationControls();
+        renderOperationalStack();
         return;
       }
       if (event.key !== 'Enter' || !discState) return;
       event.preventDefault();
-      const context = investigationContext(discState.nodes, discState.links, viewState.get());
+      const context = activeInvestigationContext();
       const firstId = [...context.matchedNodeIds].sort()[0];
-      if (firstId) selectNode(firstId, true);
+      if (firstId) {
+        rememberInspectorBack();
+        focusNode(firstId);
+      }
     });
     document.getElementById('topology-reset')?.addEventListener('click', () => {
+      clearInspectorBack();
       viewState.reset();
       discState?.viewport.reset();
       syncInvestigationControls();
+      renderOperationalStack();
     });
     document.getElementById('maas-lens')?.addEventListener('change', event => {
       viewState.update({ maasLens: event.target.value });
@@ -656,8 +766,10 @@
       if (event.key !== 'Escape' || document.activeElement === searchInput) return;
       const state = viewState.get();
       if (!state.selection && !state.query) return;
+      clearInspectorBack();
       viewState.update({ selection: null, query: '' });
       syncInvestigationControls();
+      renderOperationalStack();
     });
 
     // Add LLDP datasets after the reference options so both use the same tab

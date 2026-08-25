@@ -161,11 +161,21 @@ function buildSearchResults(query, resultIds, nodeById, ringNames) {
   `;
 }
 
+function panelActions(canGoBack) {
+  return `
+    <div class="inspector-actions">
+      ${canGoBack ? '<button type="button" class="inspector-back" data-action="back">Back</button>' : '<span></span>'}
+      <button type="button" class="inspector-close" data-action="close" aria-label="Close inspector">×</button>
+    </div>
+  `;
+}
+
 export function initInspector({
   panelSelector = '#inspector-panel',
   onSelectNode,
   onSelectLink,
   onClose,
+  onBack,
 } = {}) {
   const panel = document.querySelector(panelSelector);
   if (!panel) return { render() {} };
@@ -175,6 +185,8 @@ export function initInspector({
     if (!target) return;
     if (target.dataset.action === 'close') {
       onClose?.();
+    } else if (target.dataset.action === 'back') {
+      onBack?.();
     } else if (target.dataset.nodeId) {
       onSelectNode?.(decodeURIComponent(target.dataset.nodeId));
     } else if (target.dataset.linkId) {
@@ -183,7 +195,15 @@ export function initInspector({
   });
 
   return {
-    render({ selection, nodes, links, ringNames = {}, searchQuery = '', searchResultIds = [] }) {
+    render({
+      selection,
+      nodes,
+      links,
+      ringNames = {},
+      searchQuery = '',
+      searchResultIds = [],
+      canGoBack = false,
+    }) {
       const nodeById = new Map(nodes.map(node => [node.id, node]));
       const linkById = new Map(links.map(link => [link.id || `${link.source}→${link.target}`, link]));
       if (!selection && !searchQuery.trim()) {
@@ -193,7 +213,7 @@ export function initInspector({
       }
       if (!selection) {
         panel.hidden = false;
-        panel.innerHTML = `<button type="button" class="inspector-close" data-action="close" aria-label="Close inspector">×</button>${buildSearchResults(searchQuery, searchResultIds, nodeById, ringNames)}`;
+        panel.innerHTML = `${panelActions(false)}${buildSearchResults(searchQuery, searchResultIds, nodeById, ringNames)}`;
         return;
       }
       const selected = selection.type === 'node'
@@ -208,7 +228,7 @@ export function initInspector({
         ? buildNode(selected, links, nodeById, ringNames)
         : buildLink(selected, nodeById);
       panel.hidden = false;
-      panel.innerHTML = `<button type="button" class="inspector-close" data-action="close" aria-label="Close inspector">×</button>${content}`;
+      panel.innerHTML = `${panelActions(canGoBack)}${content}`;
     },
   };
 }

@@ -62,6 +62,19 @@ export function investigationContext(nodes, links, { query = '', filters = {} } 
   };
 }
 
+export function restrictInvestigationContext(context, nodes, links) {
+  const visibleNodeIds = new Set(nodes.map(node => node.id));
+  const visibleLinkIds = new Set(links.map(link => link.id || `${link.source}→${link.target}`));
+  const restrictIds = ids => new Set([...ids].filter(id => visibleNodeIds.has(id)));
+
+  return {
+    ...context,
+    matchedNodeIds: restrictIds(context.matchedNodeIds),
+    contextNodeIds: restrictIds(context.contextNodeIds),
+    matchedLinkIds: new Set([...context.matchedLinkIds].filter(id => visibleLinkIds.has(id))),
+  };
+}
+
 export function lodForScale(scale) {
   if (scale < 0.85) return 'overview';
   if (scale < 1.45) return 'fabric';

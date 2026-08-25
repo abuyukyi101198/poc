@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { investigationContext, lodForScale } from '../js/filters.js';
+import { investigationContext, lodForScale, restrictInvestigationContext } from '../js/filters.js';
 import { truncateArcLabel } from '../js/arc-label.js';
 import { buildNodeLinksIndex, collectLineage } from '../js/lineage.js';
 import { createViewState } from '../js/view-state.js';
@@ -92,6 +92,19 @@ test('resets investigation state to safe defaults', () => {
 test('searches compact MAAS identity and inventory without matching non-endpoints', () => {
   const context = investigationContext(nodes, links, { query: 'arm64' });
   assert.deepEqual([...context.matchedNodeIds], ['maas-endpoint']);
+});
+
+test('keeps full-fixture search results when restricting the visible Disc detail', () => {
+  const fullContext = investigationContext(nodes, links, { query: 'arm64' });
+  const discContext = restrictInvestigationContext(
+    fullContext,
+    nodes.filter(node => node.id !== 'maas-endpoint'),
+    links
+  );
+
+  assert.deepEqual([...fullContext.matchedNodeIds], ['maas-endpoint']);
+  assert.equal(discContext.active, true);
+  assert.deepEqual([...discContext.matchedNodeIds], []);
 });
 
 test('truncates arc labels instead of suppressing narrow endpoint names', () => {

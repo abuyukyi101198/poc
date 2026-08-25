@@ -118,6 +118,8 @@ function subdivide(items, x0, x1) {
  *   (§12.10). Wired to click events on the transparent pod hit-target rects
  *   drawn over each full column. Toggling the already-selected pod passes
  *   the same id; callers decide whether to deselect.
+ * options.matchedNodeIds {Set<string>} — full-fixture search matches. Matching
+ *   racks remain highlighted even when Disc View is drilled into another group.
  */
 export function renderStackView(selector, nodes, links, meta = {}, options = {}) {
   const {
@@ -125,6 +127,7 @@ export function renderStackView(selector, nodes, links, meta = {}, options = {})
     onSelectPod = null,
     maasModel = null,
     maasLens = 'none',
+    matchedNodeIds = new Set(),
   } = options;
 
   const svg = d3.select(selector);
@@ -187,6 +190,26 @@ export function renderStackView(selector, nodes, links, meta = {}, options = {})
     if (n.metadata?.stackGroups?.length) return n.metadata.stackGroups;
     return n.metadata?.stackGroup ? [n.metadata.stackGroup] : [];
   };
+  const matchedGroupIds = new Set();
+  const matchedGroupCounts = new Map();
+  const matchedRackIds = new Set();
+  for (const node of nodes) {
+    if (!matchedNodeIds.has(node.id)) continue;
+    if (node.ring === 'R5') matchedRackIds.add(node.id);
+    if (node.ring === 'R6' && node.metadata?.rack) matchedRackIds.add(node.metadata.rack);
+
+    const groupIds = groupIdsFor(node).filter(Boolean);
+    const resolvedGroupIds = groupIds.length
+      ? groupIds
+      : node.ring === 'R2'
+        ? pods.map(pod => pod.id)
+        : [];
+    resolvedGroupIds.forEach(groupId => {
+      matchedGroupIds.add(groupId);
+      matchedGroupCounts.set(groupId, (matchedGroupCounts.get(groupId) ?? 0) + 1);
+    });
+  }
+  const searchActive = matchedGroupIds.size > 0;
   const byPod = new Map(pods.map(p => [p.id, {
     spineData: [], spineMgmt: [], leafData: [], leafMgmt: [], racks: [],
   }]));
@@ -298,11 +321,16 @@ export function renderStackView(selector, nodes, links, meta = {}, options = {})
   // during hover to apply a transient secondary dim over non-hovered columns.
   const DIM_OPACITY   = 0.18;   // unselected columns while a pod is selected
   const HOVER_DIM     = 0.38;   // non-hovered columns during column hover (no selection active)
+  const SEARCH_DIM    = 0.18;   // non-matching groups during a full-fixture search
 
   function applyOpacities(hoveredPodId) {
     root.selectAll('.stack-box').attr('opacity', function(d) {
       if (d.ring === 'R2') return 1;   // superspines span all pods, never dim
       const pod = resolvedPodOf(d);
+      if (searchActive) {
+        if (hoveredPodId === pod) return 1;
+        return matchedGroupIds.has(pod) ? 1 : SEARCH_DIM;
+      }
       if (hoveredPodId) {
         if (pod === hoveredPodId) return 1;
         // if a selection is active, keep the already-dimmed unselected columns
@@ -330,6 +358,10 @@ export function renderStackView(selector, nodes, links, meta = {}, options = {})
       .attr('stroke-width', 1)
       .attr('vector-effect', 'non-scaling-stroke')
       .attr('shape-rendering', 'crispEdges');
+
+  root.selectAll('.stack-box')
+    .classed('search-match', d => matchedNodeIds.has(d.id) ||
+      (d.ring === 'R5' && matchedRackIds.has(d.id)));
 
   applyOpacities(null);   // set initial state
 
@@ -404,6 +436,7 @@ export function renderStackView(selector, nodes, links, meta = {}, options = {})
       maasSummary: maasModel?.groupSummaries.get(p.id) ?? null,
       maasLens,
       rackHealthCounts,
+      searchMatches: matchedGroupCounts.get(p.id) ?? 0,
     }];
   }));
 
@@ -493,6 +526,7 @@ function buildStackTooltip(s) {
     maasSummary,
     maasLens,
     rackHealthCounts,
+    searchMatches,
   } = s;
   const endpointLabel = ringNames.R6 || 'Server';
   const rackLabel = ringNames.R5 || 'Rack';
@@ -510,6 +544,9 @@ function buildStackTooltip(s) {
   // Counts row
   const plural = (count, label) => `${count} ${label}${count === 1 ? '' : 's'}`;
   html += `<div class="stk-counts">${esc(plural(servers, endpointLabel))} &nbsp;·&nbsp; ${esc(plural(racks, rackLabel))}</div>`;
+  if (searchMatches) {
+    html += `<div class="stk-counts">Search: ${esc(searchMatches)} matching object${searchMatches === 1 ? '' : 's'}</div>`;
+  }
 
   html += `<div class="stk-divider"></div>`;
 

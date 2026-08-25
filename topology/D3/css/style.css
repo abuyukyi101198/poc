@@ -525,6 +525,11 @@ body {
   transition: opacity 0.15s ease;
 }
 
+.stack-box.search-match {
+  stroke: var(--text-primary);
+  stroke-width: 2px;
+}
+
 /* Disc wrapper — the complete panel-safe canvas. */
 .disc-wrapper {
   display: flex;
@@ -1105,10 +1110,15 @@ footer .maas-legend-tray {
   font-family: 'Ubuntu', -apple-system, 'Segoe UI', sans-serif;
 }
 
+.inspector-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 24px;
+  margin-bottom: 8px;
+}
+
 .inspector-close {
-  position: absolute;
-  top: 10px;
-  right: 12px;
   padding: 0;
   border: 0;
   background: transparent;
@@ -1118,7 +1128,23 @@ footer .maas-legend-tray {
   cursor: pointer;
 }
 
+.inspector-back {
+  padding: 3px 7px;
+  border: 1px solid var(--control-border);
+  border-radius: 2px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+}
+
 .inspector-close:hover {
+  color: var(--text-primary);
+}
+
+.inspector-back:hover {
+  border-color: var(--control-border-hover);
   color: var(--text-primary);
 }
 
@@ -1127,7 +1153,7 @@ footer .maas-legend-tray {
   align-items: start;
   justify-content: space-between;
   gap: 10px;
-  padding-right: 22px;
+  padding-right: 0;
 }
 
 .inspector-header h2 {

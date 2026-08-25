@@ -73,6 +73,10 @@ inspector-pinned node/link inspection, and zoom-aware endpoint detail. The
 inspector labels observed, inferred, and synthetic objects and
 uses only the generated privacy-safe metadata.
 
+Search evaluates the full active fixture, not only the currently drilled Disc
+detail. Matching Stack racks remain highlighted, and Enter drills the Disc
+into the first matching group when needed.
+
 Dataset selection, operational view, and search/reset live in one top-level
 control center. The footer contains the contextual legend: availability zones
 in Topology view and the active operational lens otherwise. Its full-width,
