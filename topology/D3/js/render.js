@@ -19,18 +19,9 @@
  */
 
 import * as d3 from 'd3';
-import { computeLayout, CONFIG, RING_ORDER, RING_COLORS, PLANE_TINTS, BORDER_LEAF_FILL, getAZColor } from './layout.js';
-
-// Minimum arc span (degrees) at which an inline label is shown.
-// Arcs narrower than this degrade to tooltip-only (§8.4).
-const MIN_LABEL_DEG = {
-  R1: 0,    // Pod / Border Leaf root: always labelled (single full-circle arc)
-  R2: 3,    // Superspine
-  R3: 3,    // Spines: large arcs, always visible
-  R4: 3,    // Leaves
-  R5: 4,    // Racks
-  R6: 2,    // Servers: dynamic font sizing allows smaller threshold
-};
+import { computeLayout, CONFIG, RING_COLORS, PLANE_TINTS, BORDER_LEAF_FILL, getAZColor } from './layout.js';
+import { arcLabelFontSizePx, truncateArcLabel } from './arc-label.js';
+import { maasServerFill } from './maas-lenses.js';
 
 // Default human-readable ring names (can be overridden per-option via meta.ringNames)
 const DEFAULT_RING_NAMES = {
@@ -86,17 +77,16 @@ export function linkColorKey(d) {
 
 /**
  * getNodeFill(node) — resolves arc fill colour per spec §11.3/§7.8.
- *   - R5 Rack nodes with a populated `availability_zone` (§7.8) get the AZ's
- *     accent colour, overriding the flat neutral rack fill — this takes
- *     priority since AZ is a whole-rack tenancy signal, not a plane one.
+ *   - R5 Rack and R6 Server nodes with a populated `availability_zone` (§7.8)
+ *     get the AZ's accent colour. Operational lenses replace only the R6 fill.
  *   - R4 Border Leaves (`leaf_role: "border"`) get the dedicated Sage fill,
  *     regardless of `plane`.
  *   - R2/R3/R4 routing nodes get their plane-tinted fill (Data/Mgmt).
- *   - All other rings (R0, R1, R5, R6 — containment-only, and R5 with no AZ) get
+ *   - All other rings (R0, R1, R5, R6 — containment-only, and nodes with no AZ) get
  *     the flat neutral RING_COLORS fill.
  */
 export function getNodeFill(node) {
-  if (node.ring === 'R5') {
+  if (node.ring === 'R5' || node.ring === 'R6') {
     const azColor = getAZColor(node.availability_zone);
     if (azColor) return azColor;
   }
@@ -109,18 +99,16 @@ export function getNodeFill(node) {
   return RING_COLORS[node.ring] ?? 'var(--ring-r5)';
 }
 
-/**
- * getArcOverrideStroke(node, rackAzById) — §7.8 R6 AZ-override rendering.
- * Returns the overriding AZ's accent colour when an R6 server's own
- * `availability_zone` differs from its parent rack's, else null (caller
- * falls back to the default arc-separator stroke).
- */
-export function getArcOverrideStroke(node, rackAzById) {
-  if (node.ring !== 'R6') return null;
-  if (!node.availability_zone || node.availability_zone === 'n/a') return null;
-  const rackAz = rackAzById.get(node.metadata?.rack);
-  if (!rackAz || rackAz === node.availability_zone) return null;
-  return getAZColor(node.availability_zone);
+export function applyMaasLens(root, model, lens = 'none') {
+  root.selectAll('.node-arc').each(function(node) {
+    const fill = maasServerFill(node, lens, model);
+    d3.select(this)
+      .attr('fill', fill ? `var(--maas-${fill.tone})` : getNodeFill(node))
+      .attr('data-maas-tone', fill?.tone ?? null)
+      .attr('aria-label', fill
+        ? `${node.label}, ${fill.label}`
+        : d3.select(this).attr('data-base-aria-label'));
+  });
 }
 
 const TWO_PI = 2 * Math.PI;
@@ -140,11 +128,6 @@ export function init(rootSelector = '#topology', rawNodes = null, rawLinks = nul
   // Per-option ring name overrides (e.g. R4→"TOR" for Options A/B).
   const RING_NAMES = { ...DEFAULT_RING_NAMES, ...(meta.ringNames ?? {}) };
 
-  // Rack id → availability_zone, for the R6 AZ-override stroke check (§7.8).
-  const rackAzById = new Map(
-    layoutNodes.filter(n => n.ring === 'R5').map(n => [n.id, n.availability_zone])
-  );
-
   // ── SVG root ──────────────────────────────────────────────────────────────────
   const svg = d3.select(rootSelector)
     .attr('width',   CONFIG.width)
@@ -155,9 +138,10 @@ export function init(rootSelector = '#topology', rawNodes = null, rawLinks = nul
   const root = svg.append('g')
     .attr('class', 'topology-root')
     .attr('transform', `translate(${CONFIG.cx},${CONFIG.cy})`);
+  const scene = root.append('g').attr('class', 'topology-scene');
 
   // ── Ring-band guide circles ───────────────────────────────────────────────────
-  root.append('g')
+  scene.append('g')
     .attr('class', 'ring-guides')
     .selectAll('circle')
     .data(Object.values(bands))
@@ -179,7 +163,7 @@ export function init(rootSelector = '#topology', rawNodes = null, rawLinks = nul
   // ── Node arcs ─────────────────────────────────────────────────────────────────
   // Native <title> tooltip removed (spec §8.6) — replaced by the styled HTML
   // tooltip panel wired up in tooltip.js, using the same layoutNodes/root.
-  root.append('g')
+  scene.append('g')
     .attr('class', 'arcs')
     .selectAll('path.node-arc')
     .data(layoutNodes)
@@ -188,16 +172,20 @@ export function init(rootSelector = '#topology', rawNodes = null, rawLinks = nul
       .attr('id',           d => `arc-${d.id}`)
       .attr('d',            arcGen)
       .attr('fill',         d => getNodeFill(d))
-      .attr('stroke',       d => getArcOverrideStroke(d, rackAzById) ?? 'var(--canvas-bg)')
-      .attr('stroke-width', d => getArcOverrideStroke(d, rackAzById) ? 3 : 1.5);
+      .attr('stroke',       'var(--canvas-bg)')
+      .attr('stroke-width', 1.5)
+      .attr('tabindex', 0)
+      .attr('role', 'button')
+      .attr('aria-label', d => `${d.label}, ${RING_NAMES[d.ring] ?? d.ring}, ${d.plane} plane`)
+      .attr('data-base-aria-label', d => `${d.label}, ${RING_NAMES[d.ring] ?? d.ring}, ${d.plane} plane`);
 
   // ── Links placeholder (Phase 2) ───────────────────────────────────────────────
   // Created here (after arcs, before labels) to fix the DOM stacking order.
   // drawLinks() selects this group and populates it.
-  root.append('g').attr('class', 'links');
+  scene.append('g').attr('class', 'links');
 
   // ── Arc labels ────────────────────────────────────────────────────────────────
-  root.append('g')
+  scene.append('g')
     .attr('class', 'arc-labels')
     .selectAll('text.arc-label')
     .data(layoutNodes)
@@ -210,12 +198,7 @@ export function init(rootSelector = '#topology', rawNodes = null, rawLinks = nul
       .attr('fill',               'var(--text-primary)')    // §11.1 primary text colour, theme-aware
       .attr('pointer-events',     'none')
       .style('user-select',       'none')
-      // Hide label if arc is too narrow (§8.4 degradation placeholder)
-      .attr('opacity', d => {
-        const spanDeg = (d.endAngle - d.startAngle) * 180 / Math.PI;
-        return spanDeg >= (MIN_LABEL_DEG[d.ring] ?? 5) ? 1 : 0;
-      })
-      .text(d => d.label);
+      .text(d => truncateArcLabel(d));
 
   // ── Ring-name labels ──────────────────────────────────────────────────────────
   // Small italic labels at 12 o'clock, placed in the inter-ring gap just
@@ -229,7 +212,7 @@ export function init(rootSelector = '#topology', rawNodes = null, rawLinks = nul
     return { ring, label: RING_NAMES[ring] ?? ring, y: -radius };
   });
 
-  root.append('g')
+  scene.append('g')
     .attr('class', 'ring-name-labels')
     .selectAll('text.ring-name')
     .data(ringLabelData)
@@ -246,7 +229,7 @@ export function init(rootSelector = '#topology', rawNodes = null, rawLinks = nul
       .text(d => d.label);
 
   // ── Centre label ──────────────────────────────────────────────────────────────
-  root.append('text')
+  scene.append('text')
     .attr('class',             'centre-label')
     .attr('x',                 0)
     .attr('y',                 0)
@@ -254,7 +237,7 @@ export function init(rootSelector = '#topology', rawNodes = null, rawLinks = nul
     .attr('dominant-baseline', 'central')
     .attr('font-size',         '11px')
     .attr('fill',              'var(--text-secondary)')    // §11.1 secondary/muted text, theme-aware
-    .text(meta?.option ? `Option ${meta.option}` : '');
+    .text(meta?.centerLabel ?? (meta?.option ? `Option ${meta.option}` : ''));
 
   // Note: MAAS control-plane rack-controller data (§7.7) is surfaced exclusively
   // via the tooltip's "MAAS Control Plane" section (§8.6) — no arc badge is
@@ -267,7 +250,7 @@ export function init(rootSelector = '#topology', rawNodes = null, rawLinks = nul
 
   // Return for use by subsequent phases.
   // Phase 2 calls drawLinks(root, layoutNodes, links) after this.
-  return { svg, root, layoutNodes, links, bands, populatedRings };
+  return { svg, root, scene, layoutNodes, links, bands, populatedRings };
 }
 
 
@@ -300,21 +283,7 @@ function arcLabelTransform(node) {
  * R6 (servers) scale dynamically based on arc angular span to fit within narrow arcs.
  */
 function arcLabelFontSize(node) {
-  if (node.ring === 'R6') {
-    const spanDeg = (node.endAngle - node.startAngle) * 180 / Math.PI;
-    // Dynamic font sizing for servers — max 8 px at ~9+ degrees, min 3.5 px at narrow spans.
-    const dynamicSize = Math.max(3.5, Math.min(8, spanDeg * 2));
-    return `${dynamicSize.toFixed(1)}px`;
-  }
-
-  switch (node.ring) {
-    case 'R1': return '10px';
-    case 'R2': return '9px';
-    case 'R3': return '9px';
-    case 'R4': return '8.5px';
-    case 'R5': return '8px';
-    default:   return '8px';
-  }
+  return `${arcLabelFontSizePx(node).toFixed(1)}px`;
 }
 
 // ── Phase 2 ───────────────────────────────────────────────────────────────────
@@ -353,27 +322,30 @@ export function drawLinks(root, layoutNodes, links) {
     return true;
   });
 
-  root.select('.links')
-    .selectAll('path.link')
-    .data(drawable, d => `${d.source}→${d.target}`)  // key by endpoint pair
-    .join('path')
-      .attr('class',       d => `link plane-${d.plane} type-${d.type}`)
+  const linkGroups = root.select('.links')
+    .selectAll('g.link-group')
+    .data(drawable, d => d.id || `${d.source}→${d.target}`)
+    .join('g')
+      .attr('class', d => [
+        'link-group',
+        `plane-${d.plane}`,
+        `type-${d.type}`,
+        `provenance-${d.metadata?.provenance || 'reference'}`,
+        d.metadata?.vlanEvidence?.managementVlanObserved ? 'management-vlan' : '',
+      ].filter(Boolean).join(' '))
+      .attr('data-link-id', d => d.id || `${d.source}→${d.target}`)
       .attr('data-source', d => d.source)
       .attr('data-target', d => d.target)
-      // peer_adjacency links carry plane:"shared" for schema consistency but
-      // must be toggled independently, so stamp the logical colour-key instead.
-      .attr('data-plane',  d => d.type === 'peer_adjacency' ? 'peer_adjacency' : d.plane)
-      .attr('d', d => radialLinkPath(
-        nodeById.get(d.source),
-        nodeById.get(d.target),
-        d
-      ))
-      .attr('fill',         'none')
-      .attr('stroke',       d => LINK_COLORS[linkColorKey(d)] ?? LINK_COLORS.shared)
-      .attr('stroke-width', 1)
-      .attr('opacity',      d => LINK_OPACITY[linkColorKey(d)] ?? LINK_OPACITY.shared)
+      .attr('data-plane', d => d.type === 'peer_adjacency' ? 'peer_adjacency' : d.plane);
+
+  linkGroups.append('path')
+    .attr('class', 'link')
+    .attr('d', d => radialLinkPath(nodeById.get(d.source), nodeById.get(d.target), d))
+    .attr('fill', 'none')
+    .attr('stroke', d => LINK_COLORS[linkColorKey(d)] ?? LINK_COLORS.shared)
+    .attr('stroke-width', 1)
+    .attr('opacity', d => LINK_OPACITY[linkColorKey(d)] ?? LINK_OPACITY.shared)
     .append('title')
-      // Native tooltip (replaced by styled panel in Phase 4)
       .text(d => `${d.source} → ${d.target}\nPlane: ${d.plane}  Type: ${d.type}`);
 
   console.log(
@@ -505,5 +477,3 @@ function radialLinkPath(sourceNode, targetNode, linkDatum) {
   // Plain: entry = a_src (radial stub), exit = a_outer (radial exit)
   return makeTreePath(r_src, a_src, r_arc, a_src, a_outer, r_tgt, a_outer);
 }
-
-

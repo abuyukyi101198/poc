@@ -14,10 +14,9 @@
  * overlapping chart content. Pointer events are disabled on these labels so
  * the transparent column hit-targets (§12.10) remain the sole click surface.
  *
- * Sizing: rendered at the SAME width as the Disc View's SVG canvas
- * (layout.js CONFIG.width) and at a deliberately short, compressed height —
- * this is a summary view sitting above the detail view, not a chart in its
- * own right.
+ * Sizing: the logical multi-pod layout spans the Disc View's canvas width
+ * (layout.js CONFIG.width), then rotates into a narrow portrait SVG beside
+ * the Disc. This keeps the summary legible without reducing Disc height.
  *
  * x-axis note: pod columns are ordered and sized proportional to their real
  * IP block span (§12.2), but the *unpodded* address space between blocks is
@@ -35,8 +34,8 @@
  * (§12.11). Per-node BFS lineage highlight and the §8.6 per-node tooltip are
  * not yet active.
  *
- * Only meaningful for fixtures with 2+ R1 Pod nodes carrying
- * `metadata.cidr` (currently: Option D only — wired up in index.html).
+ * Supports either reference pods (R1 nodes with `metadata.cidr`) or an
+ * inferred `meta.stackView.groups` contract, such as LLDP frame/hall groups.
  *
  * Documented simplifications vs. the full spec:
  *   - §12.5's strict "parent width = union of children x-extents" rule is
@@ -56,6 +55,7 @@
 import * as d3 from 'd3';
 import { getAZColor, CONFIG as DISC_CONFIG } from './layout.js';
 import { parseCidr } from './ip.js';
+import { maasRackFill } from './maas-lenses.js';
 
 const CONFIG = {
   width:   DISC_CONFIG.width,   // match the Disc View canvas width exactly
@@ -75,9 +75,9 @@ const THICKNESS = {
   rackMax:    10,   // max half-height for the heaviest rack (§12.6)
 };
 
-// SS_START=4, SP_START=9, LF_START=14, RK_START=19, ARM_HEIGHT=29
-// HEIGHT = ARM_HEIGHT×2 + 6 + LABEL_AREA = 58 + 6 + 56 = 120px
-// Mirrored in style.css (#stackview { height: 90px } ≈ HEIGHT×0.75 at max-width 705px).
+// SS_START=4, SP_START=9, LF_START=14, RK_START=19, ARM_HEIGHT=29.
+// LABEL_GUTTER gives the portrait view a left-side channel for horizontal
+// group labels; the logical x-axis becomes the vertical screen axis.
 
 // Cumulative offsets from the y=0 baseline, one arm — computed once since
 // THICKNESS is fixed regardless of fixture content.
@@ -87,8 +87,9 @@ const LF_START = SP_START + THICKNESS.spine + CONFIG.rowGap;
 const RK_START = LF_START + THICKNESS.leaf + CONFIG.rowGap;
 const ARM_HEIGHT = RK_START + THICKNESS.rackMax;
 
-const LABEL_AREA = 56;   // px reserved above the top arm for angled (-45°) CIDR labels
-const HEIGHT = ARM_HEIGHT * 2 + 6 + LABEL_AREA;   // = 120px — mirrored in style.css
+const LABEL_AREA = 56;
+const LABEL_GUTTER = 80;
+const STACK_WIDTH = ARM_HEIGHT * 2 + 6 + LABEL_AREA + LABEL_GUTTER; // = 200px
 
 /** Subdivide [x0,x1] among `items` proportional to weight (fixture order). */
 function subdivide(items, x0, x1) {
@@ -119,27 +120,54 @@ function subdivide(items, x0, x1) {
  *   the same id; callers decide whether to deselect.
  */
 export function renderStackView(selector, nodes, links, meta = {}, options = {}) {
-  const { selectedPodId = null, onSelectPod = null } = options;
+  const {
+    selectedPodId = null,
+    onSelectPod = null,
+    maasModel = null,
+    maasLens = 'none',
+  } = options;
 
   const svg = d3.select(selector);
   svg.selectAll('*').remove();
 
-  const pods = nodes.filter(n => n.ring === 'R1' && n.metadata?.cidr);
+  const inferredGroups = meta.stackView?.groups;
+  const ringNames = meta.ringNames || {};
+  const groupLabel = meta.stackView?.groupLabel || 'Pod';
+  const usesInferredGroups = Array.isArray(inferredGroups) && inferredGroups.length > 0;
+  const pods = usesInferredGroups
+    ? inferredGroups
+    : nodes.filter(n => n.ring === 'R1' && n.metadata?.cidr);
   if (pods.length === 0) return;
 
-  svg.attr('width', CONFIG.width).attr('height', HEIGHT);
-  svg.attr('viewBox', `0 0 ${CONFIG.width} ${HEIGHT}`);
+  const stackBounds = svg.node().getBoundingClientRect();
+  const viewportWidth = Math.round(stackBounds.width) || STACK_WIDTH;
+  const viewportHeight = Math.round(stackBounds.height) || CONFIG.width;
+  const labelGutterWidth = Math.max(72, Math.round(viewportWidth * 0.38));
+  const icicleWidth = viewportWidth - labelGutterWidth;
+  const horizontalScale = icicleWidth / (ARM_HEIGHT * 2);
+  const verticalScale = viewportHeight / CONFIG.width;
+  svg
+    .attr('width', viewportWidth)
+    .attr('height', viewportHeight)
+    .attr('viewBox', `0 0 ${viewportWidth} ${viewportHeight}`)
+    .attr('preserveAspectRatio', 'none');
 
   // ── x-axis: pods ordered/sized by real IP block span (§12.2), but the
   // unpodded address space between blocks is compressed to a small fixed
   // gap rather than drawn to true scale — only pods with actual
   // infrastructure occupy width in this chart. ─────────────────────────────
-  const ranges = new Map(pods.map(p => [p.id, parseCidr(p.metadata.cidr)]));
-  const sortedPods = [...pods].sort((a, b) => ranges.get(a.id).start - ranges.get(b.id).start);
-  const spans = sortedPods.map(p => {
-    const r = ranges.get(p.id);
-    return r.end - r.start + 1;
-  });
+  const ranges = usesInferredGroups
+    ? null
+    : new Map(pods.map(p => [p.id, parseCidr(p.metadata.cidr)]));
+  const sortedPods = usesInferredGroups
+    ? [...pods].sort((a, b) => a.order - b.order || a.label.localeCompare(b.label))
+    : [...pods].sort((a, b) => ranges.get(a.id).start - ranges.get(b.id).start);
+  const spans = usesInferredGroups
+    ? sortedPods.map(p => p.weight || 1)
+    : sortedPods.map(p => {
+      const range = ranges.get(p.id);
+      return range.end - range.start + 1;
+    });
   const totalSpan = spans.reduce((a, b) => a + b, 0);
   const usableWidth = CONFIG.width - CONFIG.marginX * 2 - CONFIG.colGap * (sortedPods.length - 1);
 
@@ -154,17 +182,23 @@ export function renderStackView(selector, nodes, links, meta = {}, options = {})
   const fullX1 = podCols.get(sortedPods[sortedPods.length - 1].id).x1;
 
   // ── Bucket every non-Pod, non-Superspine node by its owning pod ────────
-  const podOf = n => (n.ring === 'R1' ? n.id : n.metadata?.pod);
+  const groupIdsFor = n => {
+    if (!usesInferredGroups) return [n.ring === 'R1' ? n.id : n.metadata?.pod];
+    if (n.metadata?.stackGroups?.length) return n.metadata.stackGroups;
+    return n.metadata?.stackGroup ? [n.metadata.stackGroup] : [];
+  };
   const byPod = new Map(pods.map(p => [p.id, {
     spineData: [], spineMgmt: [], leafData: [], leafMgmt: [], racks: [],
   }]));
   nodes.forEach(n => {
     if (n.ring === 'R1' || n.ring === 'R2' || n.ring === 'R6') return;
-    const bucket = byPod.get(podOf(n));
-    if (!bucket) return;
-    if (n.ring === 'R3') (n.plane === 'mgmt' ? bucket.spineMgmt : bucket.spineData).push(n);
-    else if (n.ring === 'R4') (n.plane === 'mgmt' ? bucket.leafMgmt : bucket.leafData).push(n);
-    else if (n.ring === 'R5') bucket.racks.push(n);
+    groupIdsFor(n).forEach(groupId => {
+      const bucket = byPod.get(groupId);
+      if (!bucket) return;
+      if (n.ring === 'R3') (n.plane === 'mgmt' ? bucket.spineMgmt : bucket.spineData).push(n);
+      else if (n.ring === 'R4') (n.plane === 'mgmt' ? bucket.leafMgmt : bucket.leafData).push(n);
+      else if (n.ring === 'R5') bucket.racks.push(n);
+    });
   });
 
   const superspines = nodes.filter(n => n.ring === 'R2');
@@ -174,7 +208,12 @@ export function renderStackView(selector, nodes, links, meta = {}, options = {})
 
   const root = svg.append('g')
     .attr('class', 'stack-root')
-    .attr('transform', `translate(0, ${ARM_HEIGHT + 3 + LABEL_AREA})`);   // y=0 baseline
+    .attr(
+      'transform',
+      `translate(${labelGutterWidth + icicleWidth / 2 + horizontalScale * (ARM_HEIGHT + 3 + LABEL_AREA)}, 0) ` +
+      `scale(${horizontalScale}, ${verticalScale}) ` +
+      `rotate(90) translate(0, ${ARM_HEIGHT + 3 + LABEL_AREA})`
+    );
 
   // Flattened list of { x0,x1,y0,y1, fill, ring, ...node }. Node fields are
   // SPREAD directly onto each box so interaction.js/tooltip.js work unchanged.
@@ -183,7 +222,17 @@ export function renderStackView(selector, nodes, links, meta = {}, options = {})
   // ── R1 Pod — mirrored baseline band (§12.4) ─────────────────────────────
   pods.forEach(p => {
     const col = podCols.get(p.id);
-    boxes.push({ ...p, x0: col.x0, x1: col.x1, y0: -THICKNESS.pod, y1: THICKNESS.pod, fill: 'var(--ring-r1)' });
+    boxes.push({
+      ...p,
+      ring: 'R1',
+      plane: 'shared',
+      stackGroupId: p.id,
+      x0: col.x0,
+      x1: col.x1,
+      y0: -THICKNESS.pod,
+      y1: THICKNESS.pod,
+      fill: 'var(--ring-r1)',
+    });
   });
 
   // ── R2 Superspine — full multi-pod width, stacked sub-lanes (§12.5) ─────
@@ -207,9 +256,9 @@ export function renderStackView(selector, nodes, links, meta = {}, options = {})
     const b = byPod.get(p.id);
     const col = podCols.get(p.id);
     subdivide(b.spineMgmt, col.x0, col.x1).forEach(({ node, x0, x1 }) =>
-      boxes.push({ ...node, x0, x1, y0: spineYMgmt[0], y1: spineYMgmt[1], fill: 'var(--plane-r3-mgmt)' }));
+      boxes.push({ ...node, stackGroupId: p.id, x0, x1, y0: spineYMgmt[0], y1: spineYMgmt[1], fill: 'var(--plane-r3-mgmt)' }));
     subdivide(b.spineData, col.x0, col.x1).forEach(({ node, x0, x1 }) =>
-      boxes.push({ ...node, x0, x1, y0: spineYData[0], y1: spineYData[1], fill: 'var(--plane-r3-data)' }));
+      boxes.push({ ...node, stackGroupId: p.id, x0, x1, y0: spineYData[0], y1: spineYData[1], fill: 'var(--plane-r3-data)' }));
   });
 
   // ── R4 Leaf ───────────────────────────────────────────────────────────────
@@ -219,10 +268,10 @@ export function renderStackView(selector, nodes, links, meta = {}, options = {})
     const b = byPod.get(p.id);
     const col = podCols.get(p.id);
     subdivide(b.leafMgmt, col.x0, col.x1).forEach(({ node, x0, x1 }) =>
-      boxes.push({ ...node, x0, x1, y0: leafYMgmt[0], y1: leafYMgmt[1], fill: 'var(--plane-r4-mgmt)' }));
+      boxes.push({ ...node, stackGroupId: p.id, x0, x1, y0: leafYMgmt[0], y1: leafYMgmt[1], fill: 'var(--plane-r4-mgmt)' }));
     subdivide(b.leafData, col.x0, col.x1).forEach(({ node, x0, x1 }) =>
       boxes.push({
-        ...node, x0, x1, y0: leafYData[0], y1: leafYData[1],
+        ...node, stackGroupId: p.id, x0, x1, y0: leafYData[0], y1: leafYData[1],
         fill: node.leaf_role === 'border' ? 'var(--border-leaf-fill)' : 'var(--plane-r4-data)',
       }));
   });
@@ -235,14 +284,15 @@ export function renderStackView(selector, nodes, links, meta = {}, options = {})
       (a.availability_zone ?? '').localeCompare(c.availability_zone ?? '') || a.id.localeCompare(c.id));
     subdivide(sorted, col.x0, col.x1).forEach(({ node, x0, x1 }) => {
       const halfH = Math.max(2, (node.weight || 0) / maxRackWeight * THICKNESS.rackMax / 2);
-      const fill = getAZColor(node.availability_zone) ?? 'var(--ring-r5)';
-      boxes.push({ ...node, x0, x1, y0: RK_START, y1: RK_START + halfH, fill });
-      boxes.push({ ...node, x0, x1, y0: -(RK_START + halfH), y1: -RK_START, fill });
+      const lensFill = maasRackFill(node, maasLens, maasModel);
+      const fill = lensFill ? `var(--maas-${lensFill.tone})` : getAZColor(node.availability_zone) ?? 'var(--ring-r5)';
+      boxes.push({ ...node, stackGroupId: p.id, x0, x1, y0: RK_START, y1: RK_START + halfH, fill });
+      boxes.push({ ...node, stackGroupId: p.id, x0, x1, y0: -(RK_START + halfH), y1: -RK_START, fill });
     });
   });
 
   // ── Draw all boxes ────────────────────────────────────────────────────────
-  const resolvedPodOf = d => (d.ring === 'R1' ? d.id : d.metadata?.pod ?? null);
+  const resolvedPodOf = d => d.stackGroupId ?? (d.ring === 'R1' ? d.id : d.metadata?.pod ?? null);
 
   // Compute initial opacity from selection state. This function is also called
   // during hover to apply a transient secondary dim over non-hovered columns.
@@ -277,7 +327,9 @@ export function renderStackView(selector, nodes, links, meta = {}, options = {})
       .attr('height', d => Math.max(0.5, d.y1 - d.y0))
       .attr('fill',   d => d.fill)
       .attr('stroke', 'var(--canvas-bg)')
-      .attr('stroke-width', 0.5);
+      .attr('stroke-width', 1)
+      .attr('vector-effect', 'non-scaling-stroke')
+      .attr('shape-rendering', 'crispEdges');
 
   applyOpacities(null);   // set initial state
 
@@ -285,25 +337,22 @@ export function renderStackView(selector, nodes, links, meta = {}, options = {})
   root.append('line')
     .attr('x1', fullX0).attr('x2', fullX1)
     .attr('y1', 0).attr('y2', 0)
-    .attr('stroke', 'var(--ring-guide-stroke)').attr('stroke-width', 1);
+    .attr('stroke', 'var(--ring-guide-stroke)')
+    .attr('stroke-width', 1)
+    .attr('vector-effect', 'non-scaling-stroke')
+    .attr('shape-rendering', 'crispEdges');
 
-  // ── Pod IP-range / CIDR section labels ───────────────────────────────────
-  // Drawn above the top arm, rotated -45° so they fit even very narrow pod
-  // columns (e.g. a /20 pod that is only ~24 px wide at the chart's scale).
-  // Each label's right end is anchored at the column's horizontal centre,
-  // shifted up by ~44 px so the text fans diagonally down-left and lands just
-  // at the top-arm boundary rather than overlapping the chart content.
-  // (With rotate(-45) the anchor is the visual start of the label, so we must
-  // pre-offset it upward by ≈ label_length × sin 45° ≈ 44 px.)
-  // Pointer events disabled so the hit-target rects remain the click surface.
-  const LABEL_Y_OFFSET = 52;   // px — shifts anchor above the arm so 11 px text clears the chart
-  root.append('g').attr('class', 'stack-labels')
+  // ── Pod IP-range / group labels ───────────────────────────────────────────
+  // Render labels in viewport coordinates, avoiding the icicle's non-uniform
+  // scale so text remains horizontal and crisp in the left gutter.
+  svg.append('g').attr('class', 'stack-labels')
     .selectAll('text')
     .data(sortedPods)
     .join('text')
-      .attr('transform', p => {
+      .attr('x', labelGutterWidth - 6)
+      .attr('y', p => {
         const cx = (podCols.get(p.id).x0 + podCols.get(p.id).x1) / 2;
-        return `translate(${cx.toFixed(1)},${-(ARM_HEIGHT + LABEL_Y_OFFSET)}) rotate(-45)`;
+        return verticalScale * cx;
       })
       .attr('text-anchor', 'end')
       .attr('dominant-baseline', 'middle')
@@ -330,16 +379,31 @@ export function renderStackView(selector, nodes, links, meta = {}, options = {})
       const az = (r.availability_zone && r.availability_zone !== 'n/a') ? r.availability_zone : null;
       if (az) azCounts.set(az, (azCounts.get(az) ?? 0) + 1);
     });
+    const rackHealthCounts = new Map();
+    b.racks.forEach(rack => {
+      const health = maasRackFill(rack, 'status', maasModel);
+      if (health?.group) rackHealthCounts.set(
+        health.group,
+        (rackHealthCounts.get(health.group) ?? 0) + 1
+      );
+    });
     return [p.id, {
       pod: p,
+      groupLabel,
+      ringNames,
       servers: p.weight,
       racks: b.racks.length,
+      coreData: dataSS.length,
+      coreMgmt: mgmtSS.length,
       spineData: b.spineData.length,
       spineMgmt: b.spineMgmt.length,
       leafData: accessDataCount,
       leafMgmt: b.leafMgmt.length,
       borderLeaves: borderCount,
       azCounts,
+      maasSummary: maasModel?.groupSummaries.get(p.id) ?? null,
+      maasLens,
+      rackHealthCounts,
     }];
   }));
 
@@ -412,32 +476,55 @@ function esc(v) {
 }
 
 function buildStackTooltip(s) {
-  const { pod, servers, racks, spineData, spineMgmt, leafData, leafMgmt, borderLeaves, azCounts } = s;
+  const {
+    pod,
+    groupLabel,
+    ringNames,
+    servers,
+    racks,
+    coreData,
+    coreMgmt,
+    spineData,
+    spineMgmt,
+    leafData,
+    leafMgmt,
+    borderLeaves,
+    azCounts,
+    maasSummary,
+    maasLens,
+    rackHealthCounts,
+  } = s;
+  const endpointLabel = ringNames.R6 || 'Server';
+  const rackLabel = ringNames.R5 || 'Rack';
+  const coreLabel = ringNames.R2 || 'Superspine';
+  const fabricLabel = ringNames.R3 || 'Spine';
+  const accessLabel = ringNames.R4 || 'Leaf';
 
   // Header: pod label + CIDR chip
   let html =
     `<div class="stk-header">` +
       `<span class="stk-label">${esc(pod.label)}</span>` +
-      `<span class="stk-cidr">${esc(pod.metadata?.cidr ?? '')}</span>` +
+      `${pod.metadata?.cidr ? `<span class="stk-cidr">${esc(pod.metadata.cidr)}</span>` : `<span class="stk-cidr">${esc(groupLabel)}</span>`}` +
     `</div>`;
 
   // Counts row
-  html += `<div class="stk-counts">${servers} servers &nbsp;·&nbsp; ${racks} racks</div>`;
+  const plural = (count, label) => `${count} ${label}${count === 1 ? '' : 's'}`;
+  html += `<div class="stk-counts">${esc(plural(servers, endpointLabel))} &nbsp;·&nbsp; ${esc(plural(racks, rackLabel))}</div>`;
 
   html += `<div class="stk-divider"></div>`;
 
   // Plane rows
   const dataLeafStr = leafData > 0
-    ? `${leafData} leaf${leafData !== 1 ? 's' : ''}${borderLeaves ? ` + ${borderLeaves} border` : ''}`
-    : (borderLeaves ? `${borderLeaves} border leaf${borderLeaves !== 1 ? 's' : ''}` : '—');
-  const mgmtLeafStr = leafMgmt > 0 ? `${leafMgmt} leaf${leafMgmt !== 1 ? 's' : ''}` : '—';
+    ? `${leafData} ${accessLabel}${borderLeaves ? ` + ${borderLeaves} border` : ''}`
+    : (borderLeaves ? `${borderLeaves} border ${accessLabel}` : '—');
+  const mgmtLeafStr = leafMgmt > 0 ? `${leafMgmt} ${accessLabel}` : '—';
 
   html +=
     `<table class="stk-plane-table">` +
       `<tr><td class="stk-plane-chip stk-plane-data">Data</td>` +
-        `<td>${spineData} spine${spineData !== 1 ? 's' : ''}, ${dataLeafStr}</td></tr>` +
+        `<td>${coreData} ${esc(coreLabel)}, ${spineData} ${esc(fabricLabel)}, ${dataLeafStr}</td></tr>` +
       `<tr><td class="stk-plane-chip stk-plane-mgmt">Mgmt</td>` +
-        `<td>${spineMgmt} spine${spineMgmt !== 1 ? 's' : ''}, ${mgmtLeafStr}</td></tr>` +
+        `<td>${coreMgmt} ${esc(coreLabel)}, ${spineMgmt} ${esc(fabricLabel)}, ${mgmtLeafStr}</td></tr>` +
     `</table>`;
 
   // AZ breakdown
@@ -456,7 +543,54 @@ function buildStackTooltip(s) {
     html += `</div>`;
   }
 
+  if (maasSummary?.matched) {
+    html += `<div class="stk-divider"></div>`;
+    html += `<div class="stk-counts">MAAS: ${esc(maasSummary.matched)}/${esc(maasSummary.endpoints)} matched · ${esc(buildMaasStackSummary(maasSummary, maasLens, rackHealthCounts))}</div>`;
+  }
+
   return html;
+}
+
+function median(values) {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((first, second) => first - second);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0
+    ? (sorted[middle - 1] + sorted[middle]) / 2
+    : sorted[middle];
+}
+
+function buildMaasStackSummary(summary, lens, rackHealthCounts) {
+  if (lens === 'cpu' || lens === 'memory' || lens === 'storage') {
+    const values = summary.capacityValues[lens];
+    if (values.length === 0) return `${lens} unavailable`;
+    const middle = median(values);
+    const minimum = Math.min(...values);
+    const maximum = Math.max(...values);
+    return `${lens} median ${middle} · range ${minimum}–${maximum}`;
+  }
+  if (lens === 'tenancy') {
+    const pools = [...summary.poolCounts.entries()]
+      .sort(([firstName, firstCount], [secondName, secondCount]) =>
+        secondCount - firstCount || firstName.localeCompare(secondName))
+      .map(([pool, count]) => `${pool} ${count}`)
+      .join(', ');
+    return pools || 'tenancy unavailable';
+  }
+  const labels = {
+    attention: 'failed',
+    transition: 'transitioning',
+    active: 'active',
+    available: 'ready',
+    inactive: 'inactive',
+    unknown: 'unknown',
+    unmatched: 'unmatched',
+  };
+  const order = ['attention', 'transition', 'active', 'available', 'inactive', 'unknown', 'unmatched'];
+  return order
+    .filter(group => rackHealthCounts.get(group))
+    .map(group => `${rackHealthCounts.get(group)} ${labels[group]} rack${rackHealthCounts.get(group) === 1 ? '' : 's'}`)
+    .join(' · ');
 }
 
 /** Deterministic AZ → palette index (mirrors layout.js getAZColor exactly). */

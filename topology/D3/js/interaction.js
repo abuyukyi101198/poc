@@ -8,9 +8,6 @@
  *   All unrelated arcs and links are dimmed.  Connected links are stroked at
  *   full brand-colour strength.  Mouse leave restores resting state.
  *
- * §8.2  Plane toggles
- *   Three pill buttons control which link planes are visible.
- *
  * Ring depth order (root → leaves):
  *   R1 (Pod) = 0 → R2 (Superspine) = 1 → R3 (Spine) = 2 → R4 (Leaf) = 3 → R5 (Rack) = 4 → R6 (Server) = 5
  *
@@ -20,21 +17,17 @@
  *
  * Exports:
  *   initInteraction(root, layoutNodes, links)   — Disc View entry point:
- *     lineage hover + the page-global plane-toggle buttons.
- *   initLineageHover(root, layoutNodes, links)  — lineage hover only, no
- *     toggle wiring. Used directly by Stack View (§12.11, stackview.js) so
- *     a second call doesn't hijack Disc View's plane-toggle listeners.
+ *   lineage hover and node selection.
+ * initLineageHover(root, layoutNodes, links)  — lineage hover only.
  */
 
 import * as d3 from 'd3';
 import { linkColorKey, LINK_COLORS, LINK_HOVER_COLORS } from './render.js';
+import { buildNodeLinksIndex, collectLineage } from './lineage.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const DIM_OPACITY = 0.07;
-
-/** Maps ring id → depth (0 = root/pod, 4 = server/leaf). */
-const RING_DEPTH = { R1: 0, R2: 1, R3: 2, R4: 3, R5: 4, R6: 5 };
 
 const RESTING_LINK_OPACITY = { data: 1, mgmt: 1, shared: 1, peer_adjacency: 1 };
 
@@ -49,35 +42,31 @@ const HOVER_STROKE_WIDTH   = 1.5;
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
-export function initInteraction(root, layoutNodes, links) {
-  const cleanupLineage = initLineageHover(root, layoutNodes, links);
+export function initInteraction(root, layoutNodes, links, options = {}) {
+  const cleanupLineage = initLineageHover(root, layoutNodes, links, {
+    onRestore: options.onRestore,
+  });
 
-  const visible = { data: true, mgmt: true, shared: true, peer_adjacency: true };
-  const teardown = wireToggles(root, visible);
+  const teardownSelection = wireSelection(root, options);
 
-  console.log('[topology] Phase 4 interaction initialised — lineage hover + plane toggles active');
+  console.log('[topology] Phase 4 interaction initialised — lineage hover active');
 
-  // Return a cleanup function for option switching — removes event listeners
-  // and plane-toggle handlers so they don't accumulate across re-renders.
+  // Return a cleanup function for option switching so event listeners do not accumulate.
   return function cleanup() {
     cleanupLineage();
-    if (teardown) teardown();
+    if (teardownSelection) teardownSelection();
   };
 }
 
 /**
  * initLineageHover(root, layoutNodes, links) — §8.3 hover/focus lineage
- * highlighting only, WITHOUT the global plane-toggle wiring. This is what
- * initInteraction() uses internally for the Disc View, and it's also what
- * Stack View (§12.11) calls directly on its own <g> root — calling the full
- * initInteraction() a second time would re-register the page-global
- * `.toggle-btn` click handler against the wrong root and silently break
- * Disc View's plane toggles, so Stack View must use this lighter entry
- * point instead.
+ * highlighting only. This is what initInteraction() uses internally for the
+ * Disc View and what Stack View (§12.11) can call without adding selection
+ * handlers to its own SVG.
  *
  * Returns a cleanup function that removes just the lineage listeners.
  */
-export function initLineageHover(root, layoutNodes, links) {
+export function initLineageHover(root, layoutNodes, links, { onRestore } = {}) {
   const nodeById = new Map(layoutNodes.map(n => [n.id, n]));
 
   // Build node→link-key index, omitting pod→rack containment links (not drawn)
@@ -87,10 +76,27 @@ export function initLineageHover(root, layoutNodes, links) {
     .style('cursor', 'pointer')
     .on('mouseenter.lineage', (event, d) =>
       onFocus(root, d, nodeLinksIdx, nodeById))
-    .on('mouseleave.lineage', () => onBlur(root));
+    .on('mouseleave.lineage', () => onBlur(root, onRestore));
 
   return function cleanup() {
     root.selectAll('.node-arc').on('mouseenter.lineage', null).on('mouseleave.lineage', null);
+  };
+}
+
+function wireSelection(root, { onSelectNode } = {}) {
+  const selectNode = (event, node) => {
+    event.stopPropagation();
+    onSelectNode?.(node);
+  };
+  root.selectAll('.node-arc')
+    .on('click.selection', selectNode)
+    .on('keydown.selection', (event, node) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      selectNode(event, node);
+    });
+  return () => {
+    root.selectAll('.node-arc').on('click.selection', null).on('keydown.selection', null);
   };
 }
 
@@ -123,7 +129,11 @@ function onFocus(root, hoveredNode, nodeLinksIdx, nodeById) {
   });
 }
 
-function onBlur(root) {
+function onBlur(root, onRestore) {
+  if (onRestore) {
+    onRestore();
+    return;
+  }
   root.selectAll('.node-arc').attr('opacity', 1);
 
   root.selectAll('.link').each(function(d) {
@@ -150,68 +160,60 @@ function onBlur(root) {
  * ancestors of every ancestor — so for a dual-leaf rack, both leaves and
  * all spines connected to those leaves are included.
  */
-function collectLineage(startId, nodeLinksIdx, nodeById) {
-  const lineageNodeIds = new Set([startId]);
-  const queue    = [startId];
-  const visited  = new Set([startId]);
-
-  // Pass 1: BFS upward — add ancestors only
-  while (queue.length > 0) {
-    const nodeId = queue.shift();
-    const node   = nodeById.get(nodeId);
-    if (!node) continue;
-    const depth = RING_DEPTH[node.ring] ?? 99;
-
-    for (const key of (nodeLinksIdx.get(nodeId) ?? [])) {
-      const [src, tgt] = key.split('→');
-      const otherId = src === nodeId ? tgt : src;
-      const other   = nodeById.get(otherId);
-      if (!other) continue;
-
-      const otherDepth = RING_DEPTH[other.ring] ?? 99;
-      // Only traverse toward the root (lower depth)
-      if (otherDepth < depth && !visited.has(otherId)) {
-        visited.add(otherId);
-        lineageNodeIds.add(otherId);
-        queue.push(otherId);
-      }
-    }
-  }
-
-  // Pass 2: collect every link whose both endpoints landed in lineageNodeIds
-  const lineageLinkKeys = new Set();
-  lineageNodeIds.forEach(nodeId => {
-    for (const key of (nodeLinksIdx.get(nodeId) ?? [])) {
-      const [src, tgt] = key.split('→');
-      if (lineageNodeIds.has(src) && lineageNodeIds.has(tgt)) {
-        lineageLinkKeys.add(key);
-      }
-    }
-  });
-
-  return { lineageNodeIds, lineageLinkKeys };
-}
-
-// ── Plane toggles ─────────────────────────────────────────────────────────────
-
-function wireToggles(root, visible) {
-  const handler = function() {
-    const plane = d3.select(this).attr('data-plane');
-    if (!plane) return;
-
-    visible[plane] = !visible[plane];
-    const nowOn = visible[plane];
-
-    d3.select(this).classed('active', nowOn);
-
-    root.selectAll(`.link[data-plane="${plane}"]`)
-      .attr('display', nowOn ? null : 'none');
+export function applyInvestigationHighlight(root, layoutNodes, links, {
+  selection = null,
+  contextNodeIds = new Set(),
+  matchedNodeIds = new Set(),
+  active = false,
+  evidenceMarkers = false,
+  lod = 'detail',
+} = {}) {
+  const selectedNodeId = selection?.type === 'node' ? selection.id : null;
+  const selectedLinkId = selection?.type === 'link' ? selection.id : null;
+  const selectedLink = selectedLinkId
+    ? links.find(link => (link.id || `${link.source}→${link.target}`) === selectedLinkId)
+    : null;
+  const focusedNodes = new Set(contextNodeIds);
+  const nodeById = new Map(layoutNodes.map(node => [node.id, node]));
+  const nodeLinksIdx = buildNodeLinksIndex(layoutNodes, links, nodeById);
+  const addLineage = nodeId => {
+    const { lineageNodeIds } = collectLineage(nodeId, nodeLinksIdx, nodeById);
+    lineageNodeIds.forEach(id => focusedNodes.add(id));
   };
+  if (selectedLink) {
+    addLineage(selectedLink.source);
+    addLineage(selectedLink.target);
+  }
+  if (selectedNodeId) {
+    addLineage(selectedNodeId);
+  }
+  const hasFocus = active || Boolean(selectedNodeId || selectedLinkId);
 
-  d3.selectAll('.toggle-btn').on('click.interaction', handler);
+  root.classed('lod-overview', lod === 'overview')
+    .classed('lod-fabric', lod === 'fabric')
+    .classed('lod-detail', lod === 'detail')
+    .classed('evidence-markers', evidenceMarkers);
 
-  // Return teardown so the option-switcher can remove this listener
-  return () => d3.selectAll('.toggle-btn').on('click.interaction', null);
+  root.selectAll('.node-arc')
+    .classed('selected', node => node.id === selectedNodeId)
+    .classed('matched', node => matchedNodeIds.has(node.id))
+    .classed('unresolved', node => Boolean(node.metadata?.sourceQuality?.unresolved))
+    .classed('inferred', node => node.metadata?.provenance === 'inferred')
+    .classed('synthetic', node => node.metadata?.provenance === 'synthetic')
+    .attr('opacity', node => !hasFocus || focusedNodes.has(node.id) ? 1 : DIM_OPACITY);
+
+  root.selectAll('.link-group')
+    .classed('selected', link => (link.id || `${link.source}→${link.target}`) === selectedLinkId)
+    .classed('matched', link => selectedLinkId
+      ? (link.id || `${link.source}→${link.target}`) === selectedLinkId
+      : matchedNodeIds.has(link.source) || matchedNodeIds.has(link.target))
+    .attr('opacity', link => !hasFocus ||
+      (focusedNodes.has(link.source) && focusedNodes.has(link.target)) ? 1 : DIM_OPACITY);
+
+  root.selectAll('.link-group .link')
+    .attr('stroke-width', link => evidenceMarkers
+      ? Math.min(3, 1 + Math.log2((link.metadata?.observationCount || 1) + 1) * 0.45)
+      : 1);
 }
 
 // ── Node → link-key index ─────────────────────────────────────────────────────
@@ -220,21 +222,3 @@ function wireToggles(root, visible) {
  * buildNodeLinksIndex — returns a Map<nodeId, linkKey[]>.
  * Pod→rack containment links (R1↔R5) are excluded because they are not drawn.
  */
-function buildNodeLinksIndex(layoutNodes, links, nodeById) {
-  const index = new Map(layoutNodes.map(n => [n.id, []]));
-
-  links.forEach(link => {
-    const s = nodeById.get(link.source);
-    const t = nodeById.get(link.target);
-    if (!s || !t) return;
-    // Skip pod→rack containment links (not drawn)
-    if ((s.ring === 'R1' && t.ring === 'R5') ||
-        (s.ring === 'R5' && t.ring === 'R1')) return;
-
-    const key = `${link.source}→${link.target}`;
-    index.get(link.source)?.push(key);
-    index.get(link.target)?.push(key);
-  });
-
-  return index;
-}

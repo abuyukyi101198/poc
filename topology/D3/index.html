@@ -52,7 +52,7 @@
     <div class="help-panel-body">
       <p>
         This chart shows a datacenter network as concentric rings (<strong>Disc View</strong>) or, for
-        large multi-pod deployments, as a mirrored layered chart (<strong>Stack View</strong>). Both views
+        large multi-group deployments, as a mirrored layered chart (<strong>Stack View</strong>). Both views
         draw the same underlying topology — a set of routing/containment hierarchies that all share
         physical racks and servers.
       </p>
@@ -72,9 +72,9 @@
             smooth radial-then-circular "tree of life" paths rather than straight diagonal lines.
           </li>
           <li>
-            <strong>Icicle-chart containment</strong> (Stack View only) — at multi-pod scale, giving every
-            pod its own angular wedge would leave too little room per pod. Stack View switches to a
-            partition/icicle layout instead: each pod is a column, and a parent's box width is simply the
+            <strong>Icicle-chart containment</strong> (Stack View only) — at multi-group scale, giving every
+            group its own angular wedge would leave too little room per group. Stack View switches to a
+            partition/icicle layout instead: each group is a column, and a parent's box width is simply the
             union of its children's widths — the same rule used by flame graphs. This scales to many pods
             far better than a single disc.
           </li>
@@ -90,8 +90,8 @@
       <div class="help-section">
         <h3>Reading the chart</h3>
         <ul>
-          <li>Rings, inner → outer: Pod → Superspine → Spine → Leaf → Rack → Server (some rings are
-            absent at smaller scales — see the Option tabs).</li>
+          <li>Rings, inner → outer represent hierarchy. Their names are fixture-specific and shown on the
+            chart arcs and in the inspector.</li>
           <li>Arc width = relative size (server count) of that node's subtree.</li>
           <li><span class="help-plane-dot data" aria-hidden="true"></span>Orange = Data plane link.</li>
           <li><span class="help-plane-dot mgmt" aria-hidden="true"></span>Purple = Management plane link.</li>
@@ -110,14 +110,14 @@
           <li><strong>Hover a node</strong> — highlights its full ancestor lineage (all parents up to the
             Pod) and dims everything unrelated. Multiple parents may light up at once, since a rack or
             leaf can have more than one upstream device.</li>
-          <li><strong>Hover any node</strong> — shows a detail tooltip (weight, plane, trust tier, AZ,
-            MAAS controller IDs, etc.) — only sections with data are shown.</li>
-          <li><strong>Plane toggle buttons</strong> — show/hide Data, Management, Containment, or Peer
-            Adjacency links independently. Ring geometry never changes, only link visibility.</li>
-          <li><strong>Option tabs (A–D)</strong> — switch between reference deployment sizes, from a
-            single switch/rack to a full multi-pod fabric.</li>
-          <li><strong>Stack View column click</strong> (Option D only) — drills Disc View into that pod
-            alone.</li>
+          <li><strong>Click a node or link</strong> — pins a detail inspector with topology, inventory,
+            observed LLDP evidence, and navigable connections. Press Escape or click the canvas to clear it.</li>
+          <li><strong>Search and zoom</strong> — focus a hostname/source ID, and zoom from overview to
+            endpoint detail without changing the inferred topology.</li>
+          <li><strong>Topology tabs</strong> — switch between reference deployment sizes or generated
+            LLDP datasets.</li>
+          <li><strong>Stack View column click</strong> (multi-group fixtures) — drills Disc View into that
+            inferred frame, hall, or pod.</li>
           <li><strong>Theme toggle (☀/☾)</strong> — switches dark/light color scheme; your choice is
             remembered.</li>
         </ul>
@@ -125,8 +125,8 @@
     </div>
   </aside>
 
-  <!-- Option tab strip (§8.1) -->
-  <nav class="option-tabs" role="tablist" aria-label="Reference deployment options">
+  <section class="demo-controls" aria-label="Visualization demo controls">
+  <nav class="option-tabs" role="tablist" aria-label="Topology datasets">
     <button class="option-tab" role="tab" data-option="A" aria-selected="false">
       <span class="option-tab-label">Option A</span>
       <span class="option-tab-sub">Very Small</span>
@@ -145,62 +145,98 @@
     </button>
   </nav>
 
+  <div class="demo-toolbar">
+  <section id="maas-controls" class="maas-controls" aria-label="MAAS operational overlays" hidden>
+    <div class="maas-control-row">
+      <label class="maas-lens-select" for="maas-lens">
+        <span class="controls-label">Operational view:</span>
+        <select id="maas-lens">
+          <option value="none">Topology</option>
+          <option value="tenancy">Tenancy</option>
+          <option value="status">Lifecycle</option>
+          <option value="cpu">CPU</option>
+          <option value="memory">Memory</option>
+          <option value="storage">Storage</option>
+        </select>
+      </label>
+      <span id="maas-coverage-summary" class="maas-coverage-summary" aria-live="polite"></span>
+    </div>
+  </section>
+
+  <div class="investigation-controls">
+    <label class="topology-search">
+      <span class="controls-label">Search:</span>
+      <input id="topology-search" type="search" placeholder="Hostname, source ID, or MAAS inventory" aria-label="Search topology">
+    </label>
+    <button class="toggle-btn" id="topology-reset" type="button">Reset view</button>
+    <span class="lod-status" id="lod-status" aria-live="polite"></span>
+  </div>
+  </div>
+  </section>
+
   <main class="chart-container">
-    <svg id="stackview" role="img" aria-label="Multi-pod stack view diagram"></svg>
-    <!-- §12 connector overlay — bezier line tying the selected stack column to the disc -->
+    <aside class="stackview-panel" aria-label="Multi-pod stack overview">
+      <svg id="stackview" role="img" aria-label="Multi-pod stack view diagram"></svg>
+    </aside>
+    <!-- Connector overlay ties the selected stack row to the Disc. -->
     <svg id="connector-overlay" role="presentation" aria-hidden="true" focusable="false"></svg>
     <div class="disc-wrapper">
       <svg id="topology" role="img" aria-label="Radial topology diagram"></svg>
     </div>
   </main>
 
-  <div class="controls" id="plane-toggles">
-    <span class="controls-label">Planes:</span>
-    <button class="toggle-btn active" data-plane="data">Data</button>
-    <button class="toggle-btn active" data-plane="mgmt">Management</button>
-    <button class="toggle-btn active" data-plane="shared">Containment</button>
-    <button class="toggle-btn active" data-plane="peer_adjacency" id="toggle-peer" style="display:none">Peer Adjacency</button>
-  </div>
-
-  <div class="ring-legend" role="list" aria-label="Ring depth key" id="ring-legend">
-    <span class="controls-label" aria-hidden="true">Rings:</span>
-    <span class="legend-ring" data-ring="R1" role="listitem">Pod</span>
-    <span class="legend-arrow" aria-hidden="true">→</span>
-    <span class="legend-ring" data-ring="R3" role="listitem">Spine</span>
-    <span class="legend-arrow" aria-hidden="true">→</span>
-    <span class="legend-ring" data-ring="R4" role="listitem">Leaf</span>
-    <span class="legend-arrow" aria-hidden="true">→</span>
-    <span class="legend-ring" data-ring="R5" role="listitem">Rack</span>
-    <span class="legend-arrow" aria-hidden="true">→</span>
-    <span class="legend-ring" data-ring="R6" role="listitem">Server</span>
-    <span class="legend-arrow" aria-hidden="true">·</span>
-    <span class="legend-ring" data-ring="border" role="listitem">Border Leaf</span>
-    <span class="legend-hint">· Hover any arc to focus</span>
-  </div>
+  <aside id="inspector-panel" class="inspector-panel" aria-label="Topology inspector" hidden></aside>
 
   <footer>
+    <div id="maas-legend-tray" class="maas-legend-tray">
+      <span id="maas-legend" class="maas-legend" aria-label="Operational view legend"></span>
+    </div>
     <p>Datacenter Network Topology Reference &nbsp;·&nbsp; D3.js v7</p>
   </footer>
 
   <script type="module">
-    import { init, drawLinks } from './js/render.js';
-    import { initInteraction } from './js/interaction.js';
+    import { init, drawLinks, applyMaasLens } from './js/render.js';
+    import { initInteraction, applyInvestigationHighlight } from './js/interaction.js';
     import { initTooltip } from './js/tooltip.js';
     import { initThemeToggle } from './js/theme.js';
     import { initHelpPanel } from './js/help.js';
     import { renderStackView } from './js/stackview.js';
+    import { createViewState } from './js/view-state.js';
+    import { investigationContext, lodForScale } from './js/filters.js';
+    import { initViewport } from './js/viewport.js';
+    import { initInspector } from './js/inspector.js';
+    import { createMaasModel, lensLegend } from './js/maas-lenses.js';
 
     // §11.6 theme toggle — applied independently of chart rendering
     initThemeToggle('#theme-toggle');
     // Help panel — closed by default, toggled by the symbol-only '?' button
     initHelpPanel('#help-toggle', '#help-panel', '#help-close');
 
-    // Map option letter → fixture module path
+    const LLDP_FIXTURE_INDEX = './data/generated/lldp/index.js';
+
+    async function loadLldpFixtures() {
+      const response = await fetch(LLDP_FIXTURE_INDEX, { method: 'HEAD' });
+      if (response.status === 404) return [];
+      if (!response.ok) {
+        throw new Error(`Could not load generated LLDP fixture index (${response.status}).`);
+      }
+
+      const module = await import(LLDP_FIXTURE_INDEX);
+      if (!Array.isArray(module.fixtures)) {
+        throw new TypeError('Generated LLDP fixture index must export a fixtures array.');
+      }
+      return module.fixtures;
+    }
+
+    // Reference fixtures are always available. Generated LLDP fixtures are
+    // optional so the public demo can exclude data-center artifacts entirely.
+    const LLDP_FIXTURES = await loadLldpFixtures();
     const FIXTURE_PATHS = {
-      A: './data/option-a.js',
-      B: './data/option-b.js',
-      C: './data/option-c.js',
-      D: './data/option-d.js',
+      A: './data/reference/option-a.js',
+      B: './data/reference/option-b.js',
+      C: './data/reference/option-c.js',
+      D: './data/reference/option-d.js',
+      ...Object.fromEntries(LLDP_FIXTURES.map(fixture => [fixture.id, fixture.path])),
     };
 
     // Default ring names per-option for the legend (can be overridden by fixture meta)
@@ -210,12 +246,70 @@
     const svg = document.getElementById('topology');
 
     let activeOption = 'C';
+    let activeMeta = {};
+    let activeNodes = [];
+    let activeLinks = [];
+    let stackResizeFrame = null;
     let cleanupInteraction = null;
+    let cleanupViewport = null;
+    let discState = null;
+    let activeMaasModel = createMaasModel([]);
+
+    const viewState = createViewState(() => applyInvestigationState());
+    const inspector = initInspector({
+      onSelectNode: id => selectNode(id, true),
+      onSelectLink: id => viewState.selectLink(id),
+      onClose: () => {
+        viewState.update({ selection: null, query: '' });
+        syncInvestigationControls();
+      },
+    });
 
     // §12.10 Stack View drill selection — which pod (if any) Disc View is
     // currently filtered to. null = show every pod (default, full fixture).
     // Reset to null whenever the active option changes.
     let selectedPodId = null;
+
+    function selectNode(id, focus = false) {
+      viewState.selectNode(id);
+      if (!focus || !discState) return;
+      const node = discState.layoutNodes.find(candidate => candidate.id === id);
+      if (node) discState.viewport.focusNode(node);
+    }
+
+    function applyInvestigationState() {
+      if (!discState) return;
+      const state = viewState.get();
+      const context = investigationContext(discState.nodes, discState.links, state);
+      applyMaasLens(discState.root, discState.maasModel, state.maasLens);
+      const selectedNode = state.selection?.type === 'node'
+        ? discState.layoutNodes.find(node => node.id === state.selection.id)
+        : null;
+      const lod = selectedNode?.ring === 'R6' ? 'detail' : lodForScale(discState.scale);
+      applyInvestigationHighlight(discState.root, discState.layoutNodes, discState.links, {
+        selection: state.selection,
+        ...context,
+        evidenceMarkers: state.filters.evidenceMarkers,
+        lod,
+      });
+      inspector.render({
+        selection: state.selection,
+        nodes: discState.nodes,
+        links: discState.links,
+        ringNames: { ...DEFAULT_RING_NAMES, ...(discState.meta.ringNames ?? {}) },
+        searchQuery: state.query,
+        searchResultIds: [...context.matchedNodeIds],
+      });
+      const status = document.getElementById('lod-status');
+      if (status) {
+        const count = context.active ? `${context.matchedNodeIds.size} matches · ` : '';
+        const coverage = discState.maasModel.coverage;
+        const maasCoverage = coverage.matched
+          ? ` · ${coverage.matched}/${coverage.endpoints} MAAS`
+          : '';
+        status.textContent = `${count}${lod[0].toUpperCase()}${lod.slice(1)}${maasCoverage}`;
+      }
+    }
 
     /**
      * filterToPod(nodes, links, podId) — §12.10/§8.5 drill/filter.
@@ -228,11 +322,18 @@
      * endpoints survive the node filter, which naturally drops every
      * cross-pod link with no special-case code.
      */
-    function filterToPod(nodes, links, podId) {
+    function filterToPod(nodes, links, podId, meta) {
       if (!podId) return { nodes, links };
+      const usesInferredStackGroups = meta.stackView?.groups?.length > 0;
       const keepIds = new Set(
         nodes
-          .filter(n => n.ring === 'R2' || n.id === podId || n.metadata?.pod === podId)
+          .filter(n => {
+            if (n.ring === 'R2') return true;
+            if (!usesInferredStackGroups) return n.id === podId || n.metadata?.pod === podId;
+            return n.ring === 'R1' ||
+              n.metadata?.stackGroup === podId ||
+              n.metadata?.stackGroups?.includes(podId);
+          })
           .map(n => n.id)
       );
       return {
@@ -242,20 +343,8 @@
     }
 
     /**
-     * renderConnector(podId) — §12 flat dendrogram connector between the Stack
-     * View and Disc View.
-     *
-     * Draws a classic orthogonal dendrogram for every selectable pod column:
-     *   • A thin vertical stub drops from each column's bottom-centre to a shared
-     *     horizontal bar that sits halfway between the stack and disc.
-     *   • A small terminus dot marks where each inactive stub meets the bar.
-     *   • The active column's stub is highlighted and its path continues with an
-     *     orthogonal jog at bar-level to the disc's horizontal centre, then drops
-     *     straight to the disc top — a two-elbow flat dendrogram connection.
-     *   • A small arrival dot marks the disc entry point.
-     *
-     * Called after every render that changes the selection, and on window resize.
-     * Clears itself (podId = null) when no stack is visible.
+     * renderConnector(podId) — orthogonal connector between the left-side
+     * Stack View and Disc View. Only the selected stack row is connected.
      */
     function renderConnector(podId) {
       const overlay = document.getElementById('connector-overlay');
@@ -274,30 +363,29 @@
       const topoRect  = topoEl.getBoundingClientRect();
       const contRect  = contEl.getBoundingClientRect();
       if (topoRect.width === 0 || topoRect.height === 0) return;
+      const sceneRect = topoEl.querySelector('.topology-scene')?.getBoundingClientRect();
+      if (!sceneRect || sceneRect.width === 0 || sceneRect.height === 0) return;
 
-      // All selectable columns, each identified by its data-pod hit-target rect
+      // All selectable stack rows, each identified by its data-pod hit-target.
       const hitEls = Array.from(
           stackEl.querySelectorAll('.stack-hit-targets rect[data-pod]')
       );
       if (hitEls.length === 0) return;
 
-      const cols = hitEls.map(el => {
+      const rows = hitEls.map(el => {
         const r = el.getBoundingClientRect();
-        return { id: el.getAttribute('data-pod'), cx: r.left + r.width / 2 - contRect.left };
+        return { id: el.getAttribute('data-pod'), cy: r.top + r.height / 2 - contRect.top };
       });
 
-      const activeCol = cols.find(c => c.id === podId);
-      if (!activeCol) return;
+      const activeRow = rows.find(row => row.id === podId);
+      if (!activeRow) return;
 
-      // Y coordinates in container-relative pixels
-      const yStack = stackRect.bottom                   - contRect.top;
-      const yDisc  = topoRect.top                       - contRect.top;
-      const xDisc  = topoRect.left + topoRect.width / 2 - contRect.left;
-      const yBar   = (yStack + yDisc) / 2;              // bar sits exactly at midpoint
-      if (yDisc <= yStack + 4) return;                  // not enough room to draw
-
-      const xMin = Math.min(...cols.map(c => c.cx));
-      const xMax = Math.max(...cols.map(c => c.cx));
+      const xStack = stackRect.right - contRect.left;
+      // The scene's bounding box follows the current zoom and pan transform.
+      const xDisc = sceneRect.left - contRect.left;
+      const yDisc = sceneRect.top + sceneRect.height / 2 - contRect.top;
+      const xElbow = xStack + 20;
+      if (xDisc <= xElbow) return;
 
       // Size overlay to container (1 SVG unit = 1 CSS px)
       overlay.setAttribute('viewBox', `0 0 ${contRect.width} ${contRect.height}`);
@@ -306,10 +394,8 @@
 
       const ns  = 'http://www.w3.org/2000/svg';
 
-      // Shared style tokens
-      const DIM_STROKE = 'var(--text-secondary)';
-      const DIM_OPACITY = '0.22';
-      const ACT_OPACITY = '0.70';
+      const CONNECTOR_STROKE = 'var(--text-secondary)';
+      const CONNECTOR_OPACITY = '0.70';
 
       function mkEl(tag, attrs) {
         const el = document.createElementNS(ns, tag);
@@ -318,41 +404,46 @@
         return el;
       }
 
-      // ── 1. Horizontal bar spanning all column stubs ───────────────────────
-      mkEl('line', {
-        x1: xMin.toFixed(1), y1: yBar.toFixed(1),
-        x2: xMax.toFixed(1), y2: yBar.toFixed(1),
-        stroke: DIM_STROKE, 'stroke-width': '1', opacity: DIM_OPACITY,
-      });
-
-      // ── 2. Inactive stubs ─────────────────────────────────────────────────
-      cols.filter(c => c.id !== podId).forEach(col => {
-        mkEl('line', {
-          x1: col.cx.toFixed(1), y1: yStack.toFixed(1),
-          x2: col.cx.toFixed(1), y2: yBar.toFixed(1),
-          stroke: DIM_STROKE, 'stroke-width': '1', opacity: DIM_OPACITY,
-        });
-      });
-
-      // ── 3. Active two-elbow dendrogram path ───────────────────────────────
-      // Drops from column → jogs horizontally at yBar to disc centre x →
-      // drops straight into the disc, overlapping the SVG top by DISC_OVERLAP px.
-      const DISC_OVERLAP = 12;
+      // ── Selected two-elbow path into the visible Disc boundary ────────────
       mkEl('path', {
         d: [
-          `M ${activeCol.cx.toFixed(1)},${yStack.toFixed(1)}`,
-          `L ${activeCol.cx.toFixed(1)},${yBar.toFixed(1)}`,
-          `L ${xDisc.toFixed(1)},${yBar.toFixed(1)}`,
-          `L ${xDisc.toFixed(1)},${(yDisc + DISC_OVERLAP).toFixed(1)}`,
+          `M ${xStack.toFixed(1)},${activeRow.cy.toFixed(1)}`,
+          `L ${xElbow.toFixed(1)},${activeRow.cy.toFixed(1)}`,
+          `L ${xElbow.toFixed(1)},${yDisc.toFixed(1)}`,
+          `L ${xDisc.toFixed(1)},${yDisc.toFixed(1)}`,
         ].join(' '),
         fill: 'none',
-        stroke: DIM_STROKE, 'stroke-width': '1', opacity: ACT_OPACITY,
+        stroke: CONNECTOR_STROKE, 'stroke-width': '1', opacity: CONNECTOR_OPACITY,
       });
     }
 
-    // Re-draw connector on resize (disc and stack change screen position/size)
+    function syncCanvasBounds() {
+      const controls = document.querySelector('.demo-controls');
+      const footer = document.querySelector('footer');
+      const container = document.querySelector('.chart-container');
+      if (!container) return;
+      const top = controls
+        ? Math.ceil(controls.getBoundingClientRect().bottom) + 8
+        : 8;
+      const bottom = footer
+        ? Math.ceil(window.innerHeight - footer.getBoundingClientRect().top) + 8
+        : 8;
+      container.style.setProperty('--canvas-top', `${top}px`);
+      container.style.setProperty('--canvas-bottom', `${bottom}px`);
+    }
+
+    // Re-render the Stack View on resize so its SVG coordinate system matches
+    // the resized portrait panel instead of being browser-scaled.
     window.addEventListener('resize', () => {
-      if (activeOption === 'D') renderConnector(selectedPodId);
+      syncCanvasBounds();
+      const usesStackView = activeOption === 'D' || activeMeta.stackView?.groups?.length > 1;
+      if (!usesStackView || activeNodes.length === 0) return;
+      if (stackResizeFrame) cancelAnimationFrame(stackResizeFrame);
+      stackResizeFrame = requestAnimationFrame(() => {
+        stackResizeFrame = null;
+        renderStackAndWire(activeNodes, activeLinks, activeMeta);
+        renderConnector(selectedPodId);
+      });
     });
 
     /**
@@ -363,35 +454,60 @@
      * or re-rendering the Stack View's own layout from scratch.
      */
     function renderDiscView(nodes, links, meta, selectedPodId) {
-      const ringNames = { ...DEFAULT_RING_NAMES, ...(meta.ringNames ?? {}) };
-
       if (cleanupInteraction) { cleanupInteraction(); cleanupInteraction = null; }
+      if (cleanupViewport) { cleanupViewport(); cleanupViewport = null; }
       document.getElementById('tooltip-panel')?.remove();
       document.getElementById('stack-tooltip-panel')?.remove();
       svg.innerHTML = '';
 
-      const { root, layoutNodes, links: resolvedLinks, populatedRings } =
+      const { root, scene, layoutNodes, links: resolvedLinks } =
         init('#topology', nodes, links, meta);
       drawLinks(root, layoutNodes, resolvedLinks);
-      cleanupInteraction = initInteraction(root, layoutNodes, resolvedLinks);
+      let viewport;
+      cleanupInteraction =       initInteraction(root, layoutNodes, resolvedLinks, {
+        onSelectNode: node => selectNode(node.id),
+        onRestore: () => applyInvestigationState(),
+      });
       initTooltip(root, layoutNodes, meta.ringNames ?? {});
+      viewport = initViewport(svg, scene, {
+        center: { x: 470, y: 470 },
+        onScaleChange: scale => {
+          if (!discState) return;
+          discState.scale = scale;
+          applyInvestigationState();
+          if (selectedPodId) renderConnector(selectedPodId);
+        },
+      });
+      cleanupViewport = () => viewport.destroy();
+      discState = {
+        nodes,
+        links: resolvedLinks,
+        meta,
+        root,
+        layoutNodes,
+        viewport,
+        scale: 1,
+        maasModel: createMaasModel(nodes),
+      };
+      svg.onclick = event => {
+        if (event.target.closest('.node-arc')) return;
+        viewState.clearSelection();
+      };
 
       // Page header — append the drilled-in pod's id when a selection is active
-      const baseSubtitle = meta.subtitle ?? `Option ${meta.option ?? ''}`;
+      const baseSubtitle = meta.subtitle ?? meta.label ?? `Option ${meta.option ?? ''}`;
       document.getElementById('page-subtitle').textContent = selectedPodId
         ? `${baseSubtitle} · Detail: ${selectedPodId}`
         : baseSubtitle;
       document.title = `Datacenter Topology — ${meta.label ?? `Option ${meta.option ?? ''}`}`;
       svg.setAttribute('aria-label', `Radial topology diagram — ${meta.label ?? ''}${selectedPodId ? ` (${selectedPodId})` : ''}`);
 
-      updateLegend(populatedRings, ringNames, meta);
-      document.querySelectorAll('.toggle-btn').forEach(b => b.classList.add('active'));
-
-      const hasPeerAdj = links.some(l => l.type === 'peer_adjacency');
-      const peerBtn = document.getElementById('toggle-peer');
-      if (peerBtn) peerBtn.style.display = hasPeerAdj ? '' : 'none';
-
+      requestAnimationFrame(() => {
+        syncCanvasBounds();
+        if (selectedPodId) renderConnector(selectedPodId);
+      });
       window.__topology = { root, layoutNodes, links: resolvedLinks };
+      applyInvestigationState();
     }
 
     /**
@@ -405,10 +521,13 @@
     function renderStackAndWire(nodes, links, meta) {
       renderStackView('#stackview', nodes, links, meta, {
         selectedPodId,
+        maasModel: activeMaasModel,
+        maasLens: viewState.get().maasLens,
         onSelectPod: (podId) => {
           if (podId === selectedPodId) return;   // already selected — no-op, deselection not permitted
           selectedPodId = podId;
-          const filtered = filterToPod(nodes, links, selectedPodId);
+          viewState.update({ selectedGroupId: podId, selection: null });
+          const filtered = filterToPod(nodes, links, selectedPodId, meta);
           renderDiscView(filtered.nodes, filtered.links, meta, selectedPodId);
           renderStackAndWire(nodes, links, meta);
           renderConnector(selectedPodId);
@@ -420,18 +539,28 @@
       const fixture = await import(FIXTURE_PATHS[option]);
       const { nodes, links, meta = {} } = fixture;
 
+      activeOption = option;
+      activeMeta = meta;
+      activeNodes = nodes;
+      activeLinks = links;
+      activeMaasModel = createMaasModel(nodes);
       selectedPodId = null;
+      viewState.reset();
+      configureMaasControls(activeMaasModel);
+      syncInvestigationControls();
 
       const stackSvg = document.getElementById('stackview');
-      if (option === 'D') {
+      const usesStackView = option === 'D' || meta.stackView?.groups?.length > 1;
+      document.querySelector('.chart-container')?.classList.toggle('has-stack-view', usesStackView);
+      if (usesStackView) {
         stackSvg.style.display = '';   // restore — multi-pod stack view is used
-        // Auto-select the first pod (by IP/CIDR order). Deselection not permitted.
-        const firstPod = nodes
+        syncCanvasBounds();
+        const firstPod = meta.stackView?.groups?.[0] ?? nodes
           .filter(n => n.ring === 'R1' && n.metadata?.cidr)
           .sort((a, b) => a.metadata.cidr.localeCompare(b.metadata.cidr))[0];
         selectedPodId = firstPod?.id ?? null;
 
-        const filtered = filterToPod(nodes, links, selectedPodId);
+        const filtered = filterToPod(nodes, links, selectedPodId, meta);
         renderDiscView(filtered.nodes, filtered.links, meta, selectedPodId);
         renderStackAndWire(nodes, links, meta);
         renderConnector(selectedPodId);
@@ -444,52 +573,111 @@
         renderConnector(null);
       }
 
-      activeOption = option;
     }
 
-    function updateLegend(populatedRings, ringNames, meta) {
-      const legend = document.getElementById('ring-legend');
-      // Remove everything after the label
-      legend.innerHTML = `<span class="controls-label" aria-hidden="true">Rings:</span>`;
+    function syncInvestigationControls() {
+      const state = viewState.get();
+      const search = document.getElementById('topology-search');
+      if (search) search.value = state.query;
+      const lens = document.getElementById('maas-lens');
+      if (lens) lens.value = state.maasLens;
+      renderMaasLegend(state.maasLens);
+    }
 
-      // Build legend entries from the populated rings (innermost to outermost)
-      // Skip R6 (Server) for the separator arrows — it's always at the end
-      const entries = [...populatedRings];
-      entries.forEach((ring, i) => {
-        const label = ringNames[ring] ?? ring;
-        const chip = document.createElement('span');
-        chip.className = 'legend-ring';
-        chip.setAttribute('data-ring', ring);
-        chip.setAttribute('role', 'listitem');
-        chip.textContent = label;
-        legend.appendChild(chip);
-
-        if (i < entries.length - 1) {
-          const arrow = document.createElement('span');
-          arrow.className = 'legend-arrow';
-          arrow.setAttribute('aria-hidden', 'true');
-          arrow.textContent = '→';
-          legend.appendChild(arrow);
-        }
-      });
-
-      // Add Border Leaf chip if any R4 border nodes exist (Option C/D)
-      const hasBorderLeaf = !['A','B'].includes(meta.option);
-      if (hasBorderLeaf && populatedRings.includes('R4')) {
-        const dot = document.createElement('span');
-        dot.className = 'legend-arrow'; dot.setAttribute('aria-hidden','true'); dot.textContent = '·';
-        legend.appendChild(dot);
-        const bl = document.createElement('span');
-        bl.className = 'legend-ring'; bl.setAttribute('data-ring','border'); bl.setAttribute('role','listitem');
-        bl.textContent = 'Border Leaf';
-        legend.appendChild(bl);
+    function configureMaasControls(model) {
+      const controls = document.getElementById('maas-controls');
+      if (!controls) return;
+      controls.hidden = model.coverage.matched === 0;
+      const coverage = document.getElementById('maas-coverage-summary');
+      if (coverage) {
+        coverage.textContent = `${model.coverage.matched}/${model.coverage.endpoints} endpoints matched`;
       }
-
-      const hint = document.createElement('span');
-      hint.className = 'legend-hint';
-      hint.textContent = '· Hover any arc to focus';
-      legend.appendChild(hint);
+      syncInvestigationControls();
+      syncCanvasBounds();
     }
+
+    function renderMaasLegend(lens) {
+      const legend = document.getElementById('maas-legend');
+      const tray = document.getElementById('maas-legend-tray');
+      if (!legend) return;
+      legend.innerHTML = '';
+      const items = lensLegend(lens, activeMaasModel);
+      if (tray) tray.hidden = items.length === 0;
+      items.forEach(item => {
+        const entry = document.createElement('span');
+        entry.className = 'maas-legend-item';
+        const swatch = document.createElement('span');
+        swatch.className = 'maas-swatch';
+        swatch.style.background = item.tone.startsWith('az-')
+          ? `var(--${item.tone})`
+          : `var(--maas-${item.tone})`;
+        swatch.setAttribute('aria-hidden', 'true');
+        entry.append(swatch, document.createTextNode(item.label));
+        legend.appendChild(entry);
+      });
+      syncCanvasBounds();
+    }
+
+    function renderOperationalStack() {
+      const usesStackView = activeOption === 'D' || activeMeta.stackView?.groups?.length > 1;
+      if (!usesStackView || activeNodes.length === 0) return;
+      renderStackAndWire(activeNodes, activeLinks, activeMeta);
+      renderConnector(selectedPodId);
+    }
+
+    const searchInput = document.getElementById('topology-search');
+    searchInput?.addEventListener('input', event => {
+      viewState.update({ query: event.target.value });
+    });
+    searchInput?.addEventListener('keydown', event => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        viewState.update({ query: '' });
+        syncInvestigationControls();
+        return;
+      }
+      if (event.key !== 'Enter' || !discState) return;
+      event.preventDefault();
+      const context = investigationContext(discState.nodes, discState.links, viewState.get());
+      const firstId = [...context.matchedNodeIds].sort()[0];
+      if (firstId) selectNode(firstId, true);
+    });
+    document.getElementById('topology-reset')?.addEventListener('click', () => {
+      viewState.reset();
+      discState?.viewport.reset();
+      syncInvestigationControls();
+    });
+    document.getElementById('maas-lens')?.addEventListener('change', event => {
+      viewState.update({ maasLens: event.target.value });
+      syncInvestigationControls();
+      renderOperationalStack();
+    });
+    document.addEventListener('keydown', event => {
+      if (event.key !== 'Escape' || document.activeElement === searchInput) return;
+      const state = viewState.get();
+      if (!state.selection && !state.query) return;
+      viewState.update({ selection: null, query: '' });
+      syncInvestigationControls();
+    });
+
+    // Add LLDP datasets after the reference options so both use the same tab
+    // control and lazy module-loading path.
+    const tabList = document.querySelector('.option-tabs');
+    LLDP_FIXTURES.forEach(fixture => {
+      const button = document.createElement('button');
+      button.className = 'option-tab';
+      button.setAttribute('role', 'tab');
+      button.dataset.option = fixture.id;
+      button.setAttribute('aria-selected', 'false');
+      const label = document.createElement('span');
+      label.className = 'option-tab-label';
+      label.textContent = 'LLDP';
+      const subtitle = document.createElement('span');
+      subtitle.className = 'option-tab-sub';
+      subtitle.textContent = fixture.label;
+      button.append(label, subtitle);
+      tabList.appendChild(button);
+    });
 
     // Tab click handler
     document.querySelectorAll('.option-tab').forEach(btn => {

@@ -108,7 +108,7 @@ Each populated ring is laid out independently.
 | R3 Tier-2 | A spine switch                                             | One arc per physical device                                                                                |
 | R4 Tier-3 | A leaf switch (access or border role, see §4.3); **or a ToR switch in Options A/B** (no distinct leaf/spine split at those scales, so TOR occupies the R4 slot directly and is relabelled "TOR" via `meta.ringNames`) | One arc per physical device; ToR pairs in Option B carry a same-ring peer link (§6.1a) |
 | R5 Rack   | A rack (logical + physical unit). Note: this is a *physical* containment unit — it is a distinct concept from the MAAS control-plane's rack-controller grouping, which does not always map 1:1 (§7.7). Its arc fill is overridden by `availability_zone` when set (§7.8) | One arc per rack                                                                        |
-| R6 Server | A server, including GPU/accelerator nodes                  | One arc per physical server; DPUs are a server attribute, not a separate arc; carries an AZ override stroke only when its own `availability_zone` differs from its parent rack's (§7.8) |
+| R6 Server | A server, including GPU/accelerator nodes                  | One arc per physical server; DPUs are a server attribute, not a separate arc; its default fill uses its own `availability_zone` when available (§7.8) |
 
 ### 4.2 Node attributes (common schema)
 
@@ -421,11 +421,9 @@ resolves cleanly because AZ boundaries at rack granularity never need to split a
   `#1F5C34` (dim Green), `#1E4E78` (dim Blue), `#7A2733` (dim Red), `#8C6A24` (dim Amber). AZ→colour assignment
   is deterministic (e.g. a stable hash of the AZ id modulo palette length) so the same AZ id always renders the same
   colour across sessions and across re-renders.
-- **R6 Server (override case only):** rendered only when a server's own `availability_zone` differs from its parent
-  rack's — e.g. a mixed-tenancy rack, or a server temporarily reassigned. Drawn as a thin outer-edge stroke in the
-  overriding AZ's colour (from the same palette), **not** a full arc fill, since R6's fill is otherwise reserved for
-  the neutral containment gradient (§11.3) and a full-fill override there would visually compete with the rack-level
-  signal one ring further in.
+- **R6 Server:** `availability_zone` directly fills each server arc from the same deterministic palette. This makes
+  AZ placement visible at endpoint granularity without adding a second outline encoding. Operational views may replace
+  that fill temporarily, but never change the server arc's geometry.
 - No link is ever drawn for AZ membership, and no ring geometry changes — same rationale as §7.7.
 
 If a deployment has more distinct AZ ids than the accent palette has entries, see §10 (AZ palette exhaustion) for the
@@ -440,14 +438,11 @@ deferred fallback strategy — not yet solved by this revision.
 A primary control (slider or discrete selector, A–D) switches the active per-option ring population and collapse rules (
 §3.3). Transitions should animate ring insertion/removal and arc re-proportioning rather than hard-cutting.
 
-### 8.2 Plane toggle
+### 8.2 Plane visibility
 
-Independent show/hide toggles for **Data**, **Management**, **Containment** (rack→server physical skeleton), and
-**Peer Adjacency** link sets, each toggleable without affecting ring/node geometry — only link visibility changes.
-Default state: all four on. The Peer Adjacency toggle is only displayed for options that contain peer-adjacency links
-(currently Option B only); it is hidden for options where no such links exist. A fifth toggle for OOB should be added
-(default off) when OOB links are implemented. (Visual/UI treatment of these toggles — button style, placement,
-per-plane color — is specified once, in §11.4; not repeated here.)
+**Data**, **Management**, **Containment** (rack→server physical skeleton), and **Peer Adjacency** links are always
+rendered when present. The demo intentionally has no plane visibility controls: the topology is read as one physical
+and logical system, while plane color remains the link categorization cue.
 
 ### 8.3 Hover / focus behavior
 
@@ -537,10 +532,10 @@ this is a hover panel, not a pinned/click-to-open one.
 
 ### 8.7 Theme mode toggle
 
-A page-level control (separate from the plane-toggle/legend strip below the chart, §8.2/§11.4) switches the entire
-visualization between the dark theme (§11.1, default) and the reintroduced light theme (§11.6). Unlike §8.1's
-option/scale selector, which recomputes layout, the theme toggle only swaps colour — ring geometry, angles, and link
-paths are unaffected. See §11.6 for the full colour-mapping table and persistence behavior.
+A page-level control, separate from the topology and investigation controls, switches the entire visualization between
+the dark theme (§11.1, default) and the reintroduced light theme (§11.6). Unlike §8.1's option/scale selector, which
+recomputes layout, the theme toggle only swaps colour — ring geometry, angles, and link paths are unaffected. See
+§11.6 for the full colour-mapping table and persistence behavior.
 
 ---
 
@@ -664,8 +659,8 @@ external/WAN/DCI role. The `tor-001`/`tor-002` pair demonstrates the same-ring `
 used in Option B, rendered with the standard dendrogram path grammar (§6.4) and a distinct plane color (§6.2).
 `rack-014` demonstrates the MAAS control-plane attribute (§7.7 — two redundant rack controllers) and the primary
 Availability Zone case (§7.8 — rack arc fill overridden to `az-blue`'s accent colour); `server-042` demonstrates
-the R6 AZ override case (§7.8) — its own `availability_zone` (`az-green`) differs from its parent rack's
-(`az-blue`), which is what triggers the thin outer-edge override stroke rather than a full-fill change.
+endpoint AZ rendering (§7.8) — its own `availability_zone` (`az-green`) fills the server arc even though its parent
+rack uses `az-blue`.
 
 ### 9.2 Configuration parameters
 
@@ -855,12 +850,11 @@ toggle is the single source of truth once a user has interacted with it — it d
 `prefers-color-scheme` media query after that point, though an implementation may use `prefers-color-scheme` to pick
 the *initial* default before any stored preference exists.
 
-**Control placement:** a small flat **icon-only** button, top-right of the chart header, matching the plane-toggle
-button's visual language (§6.3) rather than a skeuomorphic switch — square, ≤2px border radius, no drop shadow. The
-icon glyph reflects the mode you'd switch *to* (☀ while dark, ☾ while light); the accessible name is carried entirely
-via `aria-label`/`aria-pressed` rather than visible text, since the control needs no label to be understood at a
-glance. Positioned away from the plane-toggle/legend control strip below the chart so it reads as a page-level (not
-chart-level) setting.
+**Control placement:** a small flat **icon-only** button, top-right of the chart header, following the app's compact
+control language (§6.3) rather than a skeuomorphic switch — square, ≤2px border radius, no drop shadow. The icon glyph
+reflects the mode you'd switch *to* (☀ while dark, ☾ while light); the accessible name is carried entirely via
+`aria-label`/`aria-pressed` rather than visible text, since the control needs no label to be understood at a glance.
+Its header placement keeps it visually separate from the dataset, operational, and search controls.
 
 **Light theme palette:** every light-theme colour is a tint (white-mixed) of the same Canonical/Ubuntu brand base
 hues used elsewhere in this spec — Ubuntu Orange `#E95420` (Data plane), Aubergine `#77216F` (Management plane),
@@ -1011,8 +1005,8 @@ the corresponding arm, exactly as empty rings are omitted in Disc View (§3.2).
 
 ### 12.7 Server tier omitted
 
-R6 Server nodes are not rendered in Stack View at any zoom level. Per-server detail — including the R6 AZ override
-case (§7.8) — is only available by drilling into Disc View for a specific pod (§12.10). Stack View is strictly a
+R6 Server nodes are not rendered in Stack View at any zoom level. Per-server detail — including endpoint AZ and
+operational fill views (§7.8) — is only available by drilling into Disc View for a specific pod (§12.10). Stack View is strictly a
 multi-pod overview; Disc View remains the sole detail renderer.
 
 ### 12.8 No explicit link/edge rendering
@@ -1060,8 +1054,8 @@ carries the full raw fixture node datum in its D3 binding — the same object sh
 elements — precisely so that `initTooltip()` and `initLineageHover()` from `tooltip.js`/`interaction.js` could be
 wired up on the stack SVG root without modification. This wiring is not yet performed; the column-level dimming
 and summary tooltip described above are the current hover affordances. Enabling per-node lineage highlight would
-require calling `initLineageHover(stackRoot, layoutNodes, links)` after rendering (skipping the full
-`initInteraction()` which also re-wires the page-global plane-toggle buttons).
+require calling `initLineageHover(stackRoot, layoutNodes, links)` after rendering, rather than the full
+`initInteraction()` setup.
 
 **Implementation status:**
 
@@ -1074,5 +1068,3 @@ require calling `initLineageHover(stackRoot, layoutNodes, links)` after renderin
   stack SVG root.
 - **Per-node BFS lineage-highlight (§8.3) is NOT yet active on stack boxes** — `initLineageHover()` is not
   called; the current hover behavior is column-level opacity dimming only.
-
-

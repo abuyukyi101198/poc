@@ -36,7 +36,7 @@
  *          AZ_COLOR_COUNT, getAZColor(), computeRingBands(), computeLayout()
  */
 
-import { nodes as rawNodes, links as rawLinks } from '../data/option-c.js';
+import { nodes as rawNodes, links as rawLinks } from '../data/reference/option-c.js';
 
 // ── Chart dimensions ──────────────────────────────────────────────────────────
 export const CONFIG = {

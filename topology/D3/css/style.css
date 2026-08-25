@@ -11,7 +11,7 @@
  * §6.2  Link palette   — Ubuntu Orange / Aubergine / warm gold
  * §11.2 Typography     — Ubuntu typeface via Google Fonts CDN
  * §6.3  Visual language — flat fills, no gradients, no shadows, generous white space
- * Phase 6 additions: ring-depth legend, header polish, phase badge removed.
+ * Phase 6 additions: header polish, phase badge removed.
  * Phase 8 additions: dark/light theme toggle (§11.6).
  */
 
@@ -45,6 +45,29 @@
   --control-border:     #5A5650;
   --control-border-hover: #C9C2B8;
   --neutral-swatch:     #C9C2B8;
+  --stack-panel-bg:     rgba(21, 21, 21, 0.76);
+  --maas-status-attention: #C7162B;
+  --maas-status-transition: #9C3D72;
+  --maas-status-active: #4E9C5A;
+  --maas-status-available: #5E9ED6;
+  --maas-status-inactive: #6E6864;
+  --maas-status-unknown: #9C948C;
+  --maas-status-unmatched: #6E6864;
+  --maas-unmatched: #6E6864;
+  --maas-mixed: #6E6864;
+  --maas-capacity-0: #C7162B;
+  --maas-capacity-1: #E95420;
+  --maas-capacity-2: #EFB73E;
+  --maas-capacity-3: #8EBB5B;
+  --maas-capacity-4: #4E9C5A;
+  --maas-category-0: #5E9ED6;
+  --maas-category-1: #C57A45;
+  --maas-category-2: #7E9C53;
+  --maas-category-3: #BA6B9E;
+  --maas-category-4: #9A8ACC;
+  --maas-category-5: #5DA69B;
+  --maas-category-6: #C29A3C;
+  --maas-category-7: #A87562;
 
   /* Ring/node fills — neutral containment rings (§11.3) */
   --ring-r0: #1A1917;   /* Region  — deepest neutral (Option D full spec, not yet populated) */
@@ -79,9 +102,6 @@
   --link-shared-hover: #D8D1CA;   /* warm grey, lightened */
   --link-peer-hover:   #EFB73E;   /* Ubuntu Yellow/gold full strength */
 
-  /* Plane toggle active-state foreground (§8.2) — dark text on vivid button */
-  --toggle-active-fg: #151515;
-
   /* Tooltip categorization swatches (§7.2/§7.3, §8.6) */
   --failure-spof:      #C7162B;
   --failure-redundant: #4E9C5A;
@@ -105,6 +125,29 @@
   --control-border:     #D4CDC8;
   --control-border-hover: #767676;
   --neutral-swatch:     #5E5650;
+  --stack-panel-bg:     rgba(255, 255, 255, 0.76);
+  --maas-status-attention: #C7162B;
+  --maas-status-transition: #77216F;
+  --maas-status-active: #2E7D3C;
+  --maas-status-available: #0066CC;
+  --maas-status-inactive: #908A84;
+  --maas-status-unknown: #6E6864;
+  --maas-status-unmatched: #908A84;
+  --maas-unmatched: #908A84;
+  --maas-mixed: #908A84;
+  --maas-capacity-0: #C7162B;
+  --maas-capacity-1: #E95420;
+  --maas-capacity-2: #F99B11;
+  --maas-capacity-3: #6C9E35;
+  --maas-capacity-4: #2E7D3C;
+  --maas-category-0: #0066CC;
+  --maas-category-1: #B64A00;
+  --maas-category-2: #5B7F26;
+  --maas-category-3: #A83377;
+  --maas-category-4: #6A5AA6;
+  --maas-category-5: #007D72;
+  --maas-category-6: #996B00;
+  --maas-category-7: #8C5544;
 
   /* Ring/node fills — neutral containment rings, recovered from the
      pre-dark-theme Phase 1–4 palette (git history: commit fd6b6a9). */
@@ -145,9 +188,6 @@
   --link-shared-hover: #5E5650;   /* dark Warm Grey */
   --link-peer-hover:   #F99B11;   /* Amber */
 
-  /* Plane toggle active-state foreground (§8.2) — light text on vivid button */
-  --toggle-active-fg: #FFFFFF;
-
   /* Tooltip categorization swatches — same alert/confirm semantics both themes */
   --failure-spof:      #C7162B;
   --failure-redundant: #2E7D3C;
@@ -170,20 +210,18 @@ body {
   color: var(--text-primary);
   height: 100dvh;
   overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
   transition: background 0.15s ease, color 0.15s ease;
 }
 
 /* ── Page header ──────────────────────────────────────────────────────────── */
 .page-header {
   position: relative;
-  padding: 24px 32px 16px;
-  margin-top: 32px;
+  z-index: 20;
+  padding: 16px 32px 12px;
   text-align: center;
   width: 100%;
-  flex-shrink: 0;
+  background: var(--canvas-bg);
+  border-bottom: 1px solid var(--divider-subtle);
 }
 
 .page-header h1 {
@@ -213,7 +251,7 @@ body {
 
 /* ── Phase 8 — Dark/light theme toggle (§11.6) ───────────────────────────── */
 /* Small flat icon-only button, top-right of the header, matching the
-   plane-toggle pill visual language (§6.3) rather than a skeuomorphic
+   compact-control visual language (§6.3) rather than a skeuomorphic
    switch — square, ≤2px border radius, no drop shadow. */
 .theme-toggle-btn {
   position: absolute;
@@ -367,19 +405,22 @@ body {
 .help-plane-dot.peer   { background: var(--link-peer-hover); }
 .help-plane-dot.border { background: var(--border-leaf-fill); }
 
-/* ── Option tab strip (§8.1) ─────────────────────────────────────────────── */
-/* Flat, compact tabs below the header — same Vanilla visual language as the
-   plane-toggle strip (§6.3, §8.2): no drop shadows, ≤2px border radius,
-   border-bottom accent on the active tab instead of a pill fill so the tab
-   metaphor reads clearly while staying visually light. */
+.demo-controls {
+  position: relative;
+  z-index: 20;
+  background: var(--canvas-bg);
+  border-bottom: 1px solid var(--divider-subtle);
+}
+
+/* ── Dataset tabs ─────────────────────────────────────────────────────────── */
 .option-tabs {
   display: flex;
   justify-content: center;
   gap: 4px;
-  padding: 0 32px 16px;
-  margin-top: 16px;
+  padding: 8px 32px 6px;
+  margin-top: 0;
   flex-wrap: wrap;
-  flex-shrink: 0;
+  border-bottom: 1px solid var(--divider-subtle);
 }
 
 .option-tab {
@@ -424,24 +465,24 @@ body {
 }
 
 /* ── Chart container ──────────────────────────────────────────────────────── */
-/* Flex column holding the stack strip (#stackview, shown only for Option D)
-   and the disc wrapper below it. The stack is hidden (display:none) for
-   single-pod options so the disc gets the full available vertical space.
-   position:relative anchors the #connector-overlay absolutely inside it. */
+/* The Disc wrapper occupies the complete panel-safe canvas. The Stack View,
+   when applicable, is a left-side overlay panel rather than a layout sibling. */
 .chart-container {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  width: 100%;
-  padding: 0;
-  position: relative;
-  gap: 0;
+  --stack-width: clamp(176px, 20vw, 280px);
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  height: 100dvh;
+  width: 100vw;
+  padding:
+    var(--canvas-top, 0px)
+    var(--canvas-right, 0px)
+    var(--canvas-bottom, 0px)
+    var(--canvas-left, 0px);
 }
 
-/* §12 connector overlay — absolutely covers the entire .chart-container so
-   the bezier path can span from the active stack column down to the disc.
+/* Connector overlay — absolutely covers the entire .chart-container so
+   the selected stack-row path can span into the Disc.
    pointer-events:none keeps all chart interactions unaffected. */
 #connector-overlay {
   position: absolute;
@@ -454,43 +495,54 @@ body {
   z-index: 1;
 }
 
-/* Stack strip — shown only for multi-pod options (Option D); hidden via
-   display:none for single-pod options so no vertical space is reserved.
-   Height (90px ≈ stackview.js HEIGHT × 0.75) matches the rendered size at
-   max-width 705px (= 940px canvas × 0.75). Width is 75% of the disc canvas. */
+.stackview-panel {
+  position: absolute;
+  z-index: 2;
+  top: var(--canvas-top, 0px);
+  bottom: var(--canvas-bottom, 0px);
+  left: 0;
+  width: var(--stack-width);
+  padding: 10px 8px;
+  overflow: hidden;
+  background: var(--stack-panel-bg);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.chart-container:not(.has-stack-view) .stackview-panel {
+  display: none;
+}
+
+/* Stack SVG fills the overlay panel. Its viewBox is rotated by stackview.js,
+   so each pod occupies a vertical row. */
 #stackview {
   display: block;
-  flex-shrink: 0;
-  height: 90px;
   width: 100%;
-  max-width: 705px;
+  height: 100%;
 }
 
 .stack-box {
   transition: opacity 0.15s ease;
 }
 
-/* Disc wrapper — remaining space below the stack strip. */
+/* Disc wrapper — the complete panel-safe canvas. */
 .disc-wrapper {
-  flex: 1;
-  min-height: 0;
-  min-width: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   overflow: hidden;
   width: 100%;
-  padding: 8px 48px 16px;
+  height: 100%;
+  padding: 0;
 }
 
 #topology {
   display: block;
-  /* render.js sets width="940" height="940" viewBox="0 0 940 940".
-     max constraints + viewBox = scales to fit without distortion. */
-  max-width: 100%;
-  max-height: 100%;
-  width: auto;
-  height: auto;
+  /* render.js supplies the square viewBox. Stretch the SVG viewport to the
+     panel-safe canvas while the default preserveAspectRatio keeps the disc
+     circular and height-limited by default. */
+  width: 100%;
+  height: 100%;
 }
 
 /* ── §12 Stack View pod-column summary tooltip ───────────────────────────── */
@@ -634,17 +686,85 @@ body {
   font-family: 'Ubuntu Mono', 'Courier New', monospace;
 }
 
-/* ── Phase 4–5 plane toggle controls (§8.2) ──────────────────────────────── */
-/* Flat pill buttons — Canonical Vanilla visual language (§6.3).              */
-/* border-radius ≤ 2 px, no drop shadows, no skeuomorphic decoration.        */
-.controls {
+/* ── Investigation controls ─────────────────────────────────────────────── */
+.investigation-controls {
   display: flex;
   gap: 10px;
   justify-content: center;
   align-items: center;
-  padding: 0 32px 14px;
+  padding: 0;
+}
+
+.maas-controls {
+  display: flex;
+  align-items: center;
+  padding: 0;
+}
+
+.demo-toolbar,
+.maas-control-row,
+.maas-legend {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
   flex-wrap: wrap;
-  flex-shrink: 0;
+}
+
+.demo-toolbar {
+  gap: 8px 18px;
+  padding: 8px 32px;
+}
+
+.maas-lens-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.maas-lens-select select {
+  padding: 4px 7px;
+  border: 1px solid var(--control-border);
+  border-radius: 2px;
+  background: var(--panel-bg);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 11px;
+}
+
+.maas-coverage-summary {
+  color: var(--text-secondary);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.maas-legend {
+  color: var(--text-secondary);
+  font-size: 10px;
+}
+
+.maas-legend-tray {
+  display: flex;
+  justify-content: center;
+  padding: 0;
+}
+
+.maas-legend-tray[hidden] {
+  display: none;
+}
+
+.maas-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  white-space: nowrap;
+}
+
+.maas-swatch {
+  width: 8px;
+  height: 8px;
+  border: 1px solid var(--swatch-border);
+  border-radius: 1px;
 }
 
 .controls-label {
@@ -676,106 +796,31 @@ body {
   color: var(--text-primary);
 }
 
-/* Active states: full-strength brand hover colours (render.js LINK_HOVER_COLORS, §6.2),
-   theme-aware via the same var()s consumed by the SVG links. */
-.toggle-btn.active[data-plane="data"] {
-  background:   var(--link-data-hover);
-  border-color: var(--link-data-hover);
-  color: var(--toggle-active-fg);
-}
-
-.toggle-btn.active[data-plane="mgmt"] {
-  background:   var(--link-mgmt-hover);
-  border-color: var(--link-mgmt-hover);
-  color: var(--toggle-active-fg);
-}
-
-.toggle-btn.active[data-plane="shared"] {
-  background:   var(--link-shared-hover);
-  border-color: var(--link-shared-hover);
-  color: var(--toggle-active-fg);
-}
-
-.toggle-btn.active[data-plane="peer_adjacency"] {
-  background:   var(--link-peer-hover);
-  border-color: var(--link-peer-hover);
-  color: var(--toggle-active-fg);
-}
-
 /* ── Footer ───────────────────────────────────────────────────────────────── */
 footer {
-  padding: 10px 32px 14px;
-  margin-bottom: 32px;
+  position: fixed;
+  z-index: 20;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 32px;
+  min-height: 34px;
   font-size: 11px;
   color: var(--footer-text);
   text-align: center;
-  flex-shrink: 0;
+  background: var(--canvas-bg);
+  border-top: 1px solid var(--divider-subtle);
 }
 
-/* ── Phase 6 — Ring depth legend ─────────────────────────────────────────── */
-/*
- * Static key showing the five populated rings for Option C, innermost to
- * outermost. R1/R5/R6 chips match their flat neutral RING_COLORS fill
- * (layout.js); R3/R4 chips illustrate the Data-plane tint (PLANE_TINTS.data)
- * since those rings actually render as a Data/Management split (spec §11.3)
- * rather than a single flat colour — a separate Border Leaf chip covers the
- * third R4 fill. Sits below the plane-toggle controls strip.
- */
-.ring-legend {
+footer .maas-legend-tray {
   display: flex;
-  align-items: center;
-  gap: 8px;
   justify-content: center;
-  flex-wrap: wrap;
-  padding: 0 32px 14px;
-  margin-bottom: 12px;
-  flex-shrink: 0;
-}
-
-/* Individual ring chip + label */
-.legend-ring {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 11px;
-  color: var(--text-primary);
-  cursor: default;
-}
-
-/* Coloured square chip — background set per data-ring attribute below */
-.legend-ring::before {
-  content: '';
-  width: 12px;
-  height: 12px;
-  flex-shrink: 0;
-  border-radius: 1px;
-  border: 1px solid var(--chip-border);
-}
-
-/* Chip colours — must match RING_COLORS / PLANE_TINTS / BORDER_LEAF_FILL var()s */
-.legend-ring[data-ring="R0"]::before { background-color: var(--ring-r0); }
-.legend-ring[data-ring="R1"]::before { background-color: var(--ring-r1); }
-.legend-ring[data-ring="R2"]::before { background-color: var(--plane-r2-data); }   /* Superspine — Data tint (illustrative) */
-.legend-ring[data-ring="R3"]::before { background-color: var(--plane-r3-data); }   /* Spine — Data tint (illustrative) */
-.legend-ring[data-ring="R4"]::before { background-color: var(--plane-r4-data); }   /* Leaf — Data tint (illustrative) */
-.legend-ring[data-ring="R5"]::before { background-color: var(--ring-r5); }
-.legend-ring[data-ring="R6"]::before { background-color: var(--ring-r6); }
-.legend-ring[data-ring="border"]::before { background-color: var(--border-leaf-fill); }
-
-/* Arrow between ring chips */
-.legend-arrow {
-  font-size: 10px;
-  color: var(--footer-text);
-  font-weight: 300;
-  flex-shrink: 0;
-}
-
-/* Interaction hint appended at the end of the ring legend */
-.legend-hint {
-  font-size: 11px;
-  color: var(--footer-text);
-  margin-left: 6px;
-  font-style: italic;
+  width: 100%;
+  padding: 0 0 8px;
 }
 
 /* ── Phase 7 — Tooltip panel (§8.6) ───────────────────────────────────────── */
@@ -954,3 +999,311 @@ footer {
   color: var(--text-secondary);
 }
 
+/* ── Investigation controls and persistent inspector ─────────────────────── */
+.controls-separator {
+  width: 1px;
+  height: 22px;
+  background: var(--divider-subtle);
+}
+
+.topology-search {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.topology-search input {
+  width: 178px;
+  padding: 5px 8px;
+  border: 1px solid var(--control-border);
+  border-radius: 2px;
+  background: var(--panel-bg);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 11px;
+}
+
+.topology-search input:focus,
+.toggle-btn:focus-visible,
+.maas-lens-select select:focus-visible,
+.evidence-toggle input:focus-visible,
+.node-arc:focus-visible {
+  outline: 2px solid var(--link-data-hover);
+  outline-offset: 2px;
+}
+
+.evidence-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.evidence-toggle input {
+  accent-color: var(--link-data-hover);
+}
+
+.lod-status {
+  min-width: 54px;
+  color: var(--text-secondary);
+  font-size: 10px;
+  font-style: italic;
+}
+
+.link {
+  pointer-events: none;
+}
+
+.node-arc.selected {
+  stroke: var(--text-primary);
+  stroke-width: 3px;
+}
+
+.node-arc.matched {
+  stroke: var(--link-data-hover);
+  stroke-width: 3px;
+}
+
+.topology-root.evidence-markers .node-arc.inferred {
+  stroke-dasharray: 4 2;
+}
+
+.topology-root.evidence-markers .node-arc.synthetic {
+  opacity: 0.7;
+  stroke-dasharray: 1 3;
+}
+
+.topology-root.evidence-markers .node-arc.unresolved {
+  stroke: var(--link-mgmt-hover);
+  stroke-width: 3px;
+  stroke-dasharray: 5 2;
+}
+
+.topology-root.evidence-markers .link-group.management-vlan .link {
+  stroke-dasharray: 5 3;
+}
+
+.topology-root.lod-overview .link-group.type-containment {
+  display: none;
+}
+
+.inspector-panel {
+  position: fixed;
+  z-index: 900;
+  top: 0;
+  right: 0;
+  width: min(360px, 92vw);
+  height: 100vh;
+  overflow-y: auto;
+  padding: 18px;
+  background: var(--panel-bg);
+  border-left: 1px solid var(--border-subtle);
+  box-shadow: -4px 0 18px rgba(0, 0, 0, 0.25);
+  color: var(--text-primary);
+  font-family: 'Ubuntu', -apple-system, 'Segoe UI', sans-serif;
+}
+
+.inspector-close {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.inspector-close:hover {
+  color: var(--text-primary);
+}
+
+.inspector-header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 10px;
+  padding-right: 22px;
+}
+
+.inspector-header h2 {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: 16px;
+}
+
+.inspector-header p,
+.inspector-empty {
+  margin: 4px 0 0;
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.provenance-badge {
+  flex-shrink: 0;
+  padding: 2px 6px;
+  border: 1px solid var(--control-border);
+  border-radius: 2px;
+  color: var(--text-secondary);
+  font-size: 9px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.provenance-observed {
+  border-color: var(--link-data-hover);
+  color: var(--link-data-hover);
+}
+
+.provenance-inferred {
+  border-style: dashed;
+}
+
+.provenance-synthetic {
+  opacity: 0.72;
+  border-style: dotted;
+}
+
+.inspector-section {
+  margin-top: 16px;
+  padding-top: 9px;
+  border-top: 1px solid var(--divider-subtle);
+}
+
+.inspector-section h3 {
+  margin: 0 0 6px;
+  color: var(--text-secondary);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.inspector-section table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+
+.inspector-section th,
+.inspector-section td {
+  padding: 3px 0;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+
+.inspector-section th {
+  width: 42%;
+  color: var(--text-secondary);
+  font-weight: 400;
+}
+
+.inspector-ports th {
+  width: auto;
+  padding-right: 5px;
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.inspector-ports td {
+  padding-right: 5px;
+  font-family: 'Ubuntu Mono', 'Courier New', monospace;
+  font-size: 10px;
+}
+
+.inspector-endpoints {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+
+.inspector-link {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--link-data-hover);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  text-decoration: underline dotted;
+}
+
+.inspector-connections {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.inspector-connections li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 8px;
+  align-items: baseline;
+}
+
+.inspector-connections li .inspector-link:last-child {
+  grid-column: 1 / -1;
+  color: var(--text-secondary);
+  font-size: 10px;
+}
+
+.inspector-connections span {
+  color: var(--text-secondary);
+  font-size: 10px;
+  text-align: right;
+}
+
+@media (max-width: 720px) {
+  .page-header {
+    padding: 12px 14px 10px;
+  }
+
+  .page-header h1 {
+    font-size: 18px;
+  }
+
+  .page-header .subtitle {
+    font-size: 10px;
+    margin-top: 8px;
+  }
+
+  .option-tabs,
+  .demo-toolbar,
+  .maas-legend-tray {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+
+  footer .maas-legend-tray {
+    padding: 0 14px 8px;
+  }
+
+  .controls-separator {
+    display: none;
+  }
+
+  .topology-search input {
+    width: 146px;
+  }
+
+  .inspector-panel {
+    top: auto;
+    bottom: 0;
+    width: 100%;
+    height: min(62vh, 520px);
+    border-top: 1px solid var(--border-subtle);
+    border-left: 0;
+  }
+}

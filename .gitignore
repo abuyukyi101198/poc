@@ -4,3 +4,6 @@ __pychache__
 
 node_modules
 dist
+
+topology/D3/data/lldp
+topology/D3/data/generated
