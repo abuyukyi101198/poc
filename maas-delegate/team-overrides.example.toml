@@ -1,0 +1,15 @@
+# Copy to team-overrides.toml. Overrides always win over the automatic team detection.
+# Re-run `maas-delegate index` after editing.
+
+# Force these people to status "current" (rankable).
+include = []          # e.g. ["Firstname Lastname"]
+
+# Force these people to status "external" (never ranked).
+exclude = []
+
+# Force these people to status "former".
+former = []
+
+# Alternative display names that refer to the same person (e.g. after a rename).
+[aliases]
+# "Firstname Lastname" = ["Old Display Name"]

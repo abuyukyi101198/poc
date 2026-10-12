@@ -1,0 +1,18 @@
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+dist/
+build/
+.ruff_cache/
+.pytest_cache/
+.coverage
+
+# Derived index contains team-private (maas-private) content. Never commit it.
+.maas-delegate/
+# Local configuration and team decisions contain names.
+maas-delegate.toml
+team-overrides.toml
+labels.toml
+
+mm-archive/

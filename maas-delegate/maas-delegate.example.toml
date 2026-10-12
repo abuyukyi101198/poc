@@ -1,0 +1,37 @@
+# Copy to maas-delegate.toml (gitignored) and fill in your team's channels.
+# Relative paths are resolved against the directory containing this file.
+# Ranking parameters are constants in the code (see specs/research.md).
+
+archive_dir = "mm-archive"
+data_dir = ".maas-delegate"
+overrides_file = "team-overrides.toml"
+
+# Optional: prefix used to build permalinks from post IDs.
+# permalink_base = "https://chat.example.com/team/pl/"
+
+# Required. Team members are the people who post top-level EOD messages in `eod_channel`
+# and post in the team-only `team_channel`.
+eod_channel = "team"
+team_channel = "team-private"
+
+# Optional. Channels of sub-teams with their own technical focus. `ask` fills rows #4-5
+# with their strongest members, and `ask --team <channel>` restricts those rows to one.
+sub_team_channels = ["team-ui", "team-region"]
+
+# Optional. Senders to ignore besides "System" (bots, integrations).
+bots = ["teambot"]
+
+# Optional. Team vocabulary added to the generic built-in rules. Regexes are case-insensitive;
+# use single-quoted (literal) TOML strings so backslashes need no escaping. Changes need a reindex.
+[patterns]
+# Team rituals and logistics that carry no expertise; matching roots are dropped unless they
+# contain code or a bug signal.
+chatter = ['\bdemo day\b', 'lunch and learn']
+# Extra bug signals for classification (e.g. a tracker host, a CI-failure emoji).
+bug = ['issues\.example\.com', 'ci_failed']
+# Extra review-request wording; a question by a team member that matches still credits them.
+review = ['\bmerge request\b', '/-/merge_requests/\d']
+# Bug references, with exactly one group capturing the number; all become one `bug<n>` term.
+bug_id = ['issues\.example\.com/browse/[a-z]+-(\d+)', '\bgh-(\d+)']
+# CLI tools whose mention makes a short reply substantive (literal, case-sensitive words).
+command_words = ["kubectl", "terraform"]
