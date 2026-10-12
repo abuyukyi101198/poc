@@ -7,3 +7,5 @@ dist
 
 topology/D3/data/lldp
 topology/D3/data/generated
+
+topology/D3/lldp-data
