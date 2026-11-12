@@ -1,0 +1,1301 @@
+#!/usr/bin/env bash
+# kafes: keeps OMP coding agents in a cage. See README.md.
+#
+#   kafes setup                         one-time host setup (re-runnable)
+#   kafes task new <task> <feature-branch>
+#   kafes task shell <task>             open a terminal in the task workshop
+#   kafes task stop <task>              pause: revoke credentials, stop the workshop
+#   kafes task start <task>             resume a stopped task
+#   kafes task end <task>               remove the task; also the emergency stop
+#   kafes teardown                      remove the whole setup
+#
+# Trusted host code. `setup` copies it to ~/kafes/sandbox and links it as
+# ~/.local/bin/kafes. Run it from your home directory, never from a checkout or
+# task directory. It never reads files inside a task directory; only
+# `workshop` does.
+set -euo pipefail
+umask 077
+
+KAFES="$HOME/kafes"
+SANDBOX="$KAFES/sandbox"
+TASKS="$KAFES/tasks"
+PUSH_CFG="$HOME/.config/kafes/push"
+GATEWAY_CFG="$HOME/.config/kafes/gateway"
+CONFIG="$SANDBOX/sandbox.env"
+STATE="$SANDBOX/state"
+STOPPED="$STATE/task-stopped"
+BIN_LINK="$HOME/.local/bin/kafes"
+BUN="$HOME/.bun/bin/bun"
+OMP="$HOME/.bun/bin/omp"
+BUN_VERSION=1.4.4
+OMP_VERSION=18.16.0
+ACL=kafes-no-lan
+BROKER_URL=http://127.0.0.1:8765
+UNIT_BROKER=kafes-broker
+UNIT_GATEWAY=kafes-gateway
+UNIT_PROXY=kafes-proxy
+WS_HOME=/home/workshop
+
+# --- Helpers ----------------------------------------------------------------
+
+say() { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
+info() { printf '    %s\n' "$*"; }
+warn() { printf '\033[33mWARNING:\033[0m %s\n' "$*" >&2; }
+die() {
+  printf '\033[31mERROR:\033[0m %s\n' "$*" >&2
+  exit 1
+}
+
+# confirm "question": [Y/n], default yes. Reads the terminal, never stdin.
+confirm() {
+  local answer
+  read -r -p "$1 [Y/n] " answer </dev/tty || die "no terminal to confirm on"
+  case "$answer" in
+  "" | [Yy] | [Yy][Ee][Ss]) return 0 ;;
+  *) return 1 ;;
+  esac
+}
+
+# manual "instructions..." : print a manual step and wait until it's done.
+manual() {
+  printf '\n\033[36m[manual]\033[0m\n'
+  local line
+  for line in "$@"; do printf '    %s\n' "$line"; done
+  confirm "Done?" || die "stopped; re-run the same command once this step is done"
+}
+
+ask() { # ask VAR "prompt" [default]
+  local value
+  read -r -p "$2${3:+ [$3]}: " value </dev/tty || die "no terminal"
+  printf -v "$1" '%s' "${value:-${3:-}}"
+  [[ -n "${!1}" ]] || die "$2 is required"
+}
+
+need() { command -v "$1" >/dev/null || die "$1 not found${2:+: $2}"; }
+
+# Run one workshop command for a task, from its launch directory, in a
+# subshell, so this shell never enters the directory.
+ws() (
+  local task="$1"
+  shift
+  cd "$TASKS/$task" && exec workshop "$@"
+)
+
+# Unauthenticated public GitHub API GET; prints the body, fails on non-200.
+gh_api() {
+  curl -fsS --max-time 15 -H 'Accept: application/vnd.github+json' \
+    "https://api.github.com$1"
+}
+
+valid_name() { [[ "$1" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; }
+
+# Anonymous Git reads of a public GitHub repository. Never runs a credential
+# helper, never prompts, and never writes to the checkout's FETCH_HEAD.
+GIT_ANON=(env GIT_TERMINAL_PROMPT=0 git -c credential.helper= -c core.askPass=)
+remote_sha() { # remote_sha OWNER/REPO BRANCH: prints the branch head, or nothing
+  "${GIT_ANON[@]}" ls-remote "https://github.com/$1.git" "refs/heads/$2" | cut -f1
+}
+anon_fetch() { # anon_fetch OWNER/REPO BRANCH: brings the branch's objects into $CHECKOUT
+  "${GIT_ANON[@]}" -C "$CHECKOUT" fetch -q --no-tags --no-write-fetch-head \
+    "https://github.com/$1.git" "refs/heads/$2"
+}
+
+# kafes never pushes with your GitHub credentials. It prints the exact push
+# for you to run in another terminal, then checks the remote result itself.
+manual_push() { # manual_push EXPECTED_SHA REFSPEC "why"
+  local sha="$1" refspec="$2" ref="${2#*:refs/heads/}"
+  while true; do
+    manual \
+      "$3" \
+      "Run this push yourself, in another terminal, with your own credentials:" \
+      "" \
+      "  git -C '$CHECKOUT' push origin $refspec" \
+      "" \
+      "kafes then checks that $FORK has $ref at ${sha:0:12}."
+    [[ "$(remote_sha "$FORK" "$ref")" == "$sha" ]] && return 0
+    warn "$FORK's $ref is not at $sha yet"
+  done
+}
+
+load_config() {
+  [[ -f "$CONFIG" ]] || die "$CONFIG missing; run setup first"
+  # shellcheck source=/dev/null
+  . "$CONFIG"
+  local var
+  for var in GH_USER REPO KAFES_OWNER CHECKOUT KAFES_NAME KAFES_EMAIL \
+    KAFES_APP_CLIENT_ID KAFES_APP_INSTALLATION_ID; do
+    [[ -n "${!var:-}" ]] || die "$var not set in $CONFIG"
+  done
+  FORK="$GH_USER/$REPO"
+  KAFES_FORK="$KAFES_OWNER/$REPO"
+}
+
+save_config() {
+  mkdir -p "$SANDBOX"
+  {
+    printf '# Sandbox identifiers. No secrets.\n'
+    local var
+    for var in GH_USER REPO KAFES_OWNER CHECKOUT KAFES_NAME KAFES_EMAIL \
+      KAFES_APP_CLIENT_ID KAFES_APP_INSTALLATION_ID WORKSHOP_BRIDGE BRIDGE_ACLS_BEFORE; do
+      printf '%s=%q\n' "$var" "${!var:-}"
+    done
+  } >"$CONFIG.tmp"
+  mv "$CONFIG.tmp" "$CONFIG"
+}
+
+unit_active() { systemctl --user is-active --quiet "$1.service"; }
+
+# Waits for a URL to answer with the expected HTTP status.
+wait_http() { # wait_http URL STATUS SECONDS
+  local i code
+  for ((i = 0; i < $3; i++)); do
+    code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 2 "$1" || true)"
+    [[ "$code" == "$2" ]] && return 0
+    sleep 1
+  done
+  return 1
+}
+
+# Replace clients.json atomically; the gateway re-reads it every 10 s.
+write_clients() {
+  mkdir -p "$GATEWAY_CFG"
+  printf '%s\n' "$1" >"$GATEWAY_CFG/clients.json.tmp"
+  mv "$GATEWAY_CFG/clients.json.tmp" "$GATEWAY_CFG/clients.json"
+}
+
+# --- Trusted files ----------------------------------------------------------
+
+write_trusted_files() {
+  mkdir -p "$SANDBOX"
+
+  cat >"$SANDBOX/dev.yaml" <<'EOF'
+name: dev
+base: ubuntu@24.04
+runtime: lxd-container
+sdks:
+  - name: node
+    channel: 22/stable
+    plugs:
+      kafes-gateway:
+        interface: tunnel
+        endpoint: localhost:4000
+      kafes-push:
+        interface: tunnel
+        endpoint: localhost:4100
+  - name: system
+    slots:
+      kafes-gateway:
+        interface: tunnel
+        endpoint: localhost:4000
+      kafes-push:
+        interface: tunnel
+        endpoint: localhost:4100
+EOF
+
+  cat >"$SANDBOX/setup-workshop.sh" <<EOF
+#!/bin/sh
+set -eu
+sudo apt-get update
+sudo apt-get install -y --no-install-recommends \\
+  ca-certificates curl git ripgrep unzip build-essential python3
+npm install --global --prefix "\$HOME/.local" bun@$BUN_VERSION yarn@1.22.22
+BUN_INSTALL_GLOBAL_DIR="\$HOME/.local/share/omp" BUN_INSTALL_BIN="\$HOME/.local/bin" \\
+  "\$HOME/.local/bin/bun" install --global @oh-my-pi/pi-coding-agent@$OMP_VERSION
+mkdir -p "\$HOME/.config" "\$HOME/.omp/agent" "\$HOME/src"
+"\$HOME/.local/bin/omp" --version
+EOF
+
+  cat >"$SANDBOX/kafes-policy.yml" <<'EOF'
+tools:
+  xdev: false
+  approval:
+    edit: prompt
+    write: prompt
+    bash: prompt
+    eval: deny
+    task: deny
+    browser: deny
+    lsp: deny
+bash:
+  direnv: off
+  patterns: []
+  allowCompoundCommands: false
+EOF
+
+  cat >"$SANDBOX/kafes-prompt.md" <<'EOF'
+You work in the repository under ~/src, on a kafes/\* branch.
+
+- Commit locally. Push only your current branch, with `git push kafes HEAD`.
+- Only edit src/\*\*/\*.{ts,tsx,scss} (not src/app/apiclient/),
+  cypress/e2e/\*\*/\*.{ts,feature}, cypress/support/\*\*/\*.ts and
+  docs/\*\*/\*.md. Don't create dotfiles, binary files, symlinks or executable
+  files. The review check rejects anything else.
+- For validation, run the smallest relevant Vitest selection with --run. Don't
+  start watch mode. Run the full suite, builds or lint only when asked.
+EOF
+
+  printf '# Intentionally no Bun settings or preloads.\n' >"$SANDBOX/bunfig.toml"
+  chmod 644 "$SANDBOX"/{dev.yaml,setup-workshop.sh,kafes-policy.yml,kafes-prompt.md,bunfig.toml}
+}
+
+# --- setup ------------------------------------------------------------------
+
+setup_tools() {
+  say "1. Host tools"
+  need curl
+  need git
+  need openssl
+  need sha256sum
+  need systemd-run "systemd user services are required"
+  systemctl --user is-system-running >/dev/null 2>&1 ||
+    [[ "$(systemctl --user is-system-running 2>/dev/null)" == degraded ]] ||
+    die "no systemd user session; log in on a desktop or enable lingering"
+  if ! snap list lxd >/dev/null 2>&1; then
+    confirm "Install the LXD snap (6/stable, needs sudo)?" || die "LXD is required"
+    sudo snap install --channel=6/stable lxd
+  fi
+  if ! snap list workshop >/dev/null 2>&1; then
+    confirm "Install the Workshop snap (needs sudo)?" || die "Workshop is required"
+    sudo snap install --classic workshop
+  fi
+  sudo lxd waitready
+  need workshop
+  if [[ ! -x "$BUN" ]]; then
+    confirm "Install Bun $BUN_VERSION into ~/.bun?" || die "Bun is required"
+    curl -fsSL https://bun.sh/install | bash -s "bun-v$BUN_VERSION"
+  fi
+  if [[ "$("$OMP" --version 2>/dev/null || true)" != "omp/$OMP_VERSION" ]]; then
+    confirm "Install OMP $OMP_VERSION globally with Bun?" || die "OMP is required"
+    "$BUN" install --global "@oh-my-pi/pi-coding-agent@$OMP_VERSION"
+  fi
+  [[ "$("$OMP" --version)" == "omp/$OMP_VERSION" ]] || die "OMP version mismatch"
+  info "LXD, Workshop, Bun and omp/$OMP_VERSION present"
+  # The SDK store (api.pkg.store) can reset connections under load; retry, and
+  # tell an outage apart from a missing channel.
+  local sdk_info="" sdk_error="" sdk_out attempt
+  for attempt in 1 2 3; do
+    if sdk_out="$(sdk info node 2>&1)"; then
+      sdk_info="$sdk_out"
+      break
+    fi
+    sdk_error="$(tail -n 1 <<<"$sdk_out")"
+    if ((attempt < 3)); then
+      info "the Workshop SDK store didn't answer; retrying in $((attempt * 5)) s"
+      sleep $((attempt * 5))
+    fi
+  done
+  if [[ -z "$sdk_info" ]]; then
+    warn "can't reach the Workshop SDK store: ${sdk_error:-no response}"
+    info "'task new' also needs it: 'workshop launch' downloads the Node SDK from there."
+    confirm "Continue setup without checking the Node SDK channel?" ||
+      die "stopped; re-run setup once 'sdk info node' works"
+  elif ! grep -q '22/stable' <<<"$sdk_info"; then
+    warn "the Node SDK doesn't list 22/stable; check 'sdk info node'"
+  fi
+}
+
+setup_logins() {
+  say "2. Provider logins (stored in the host broker)"
+  info "Copilot: don't approve repository write access."
+  info "OpenRouter: if pasting a key, use a dedicated one with a credit limit."
+  local provider
+  for provider in github-copilot openrouter; do
+    if confirm "Log in to $provider now? (answer n if already logged in)"; then
+      env -u OMP_AUTH_BROKER_URL -u OPENROUTER_API_KEY "$OMP" auth-broker login "$provider"
+    fi
+  done
+  mkdir -p "$GATEWAY_CFG" "$TASKS"
+  [[ -f "$GATEWAY_CFG/clients.json" ]] || write_clients '{}'
+}
+
+setup_github_accounts() {
+  say "3. GitHub: kafes organization, fork and App"
+  # shellcheck source=/dev/null
+  [[ -f "$CONFIG" ]] && . "$CONFIG"
+  ask GH_USER "Your GitHub username" "${GH_USER:-}"
+  ask REPO "Repository name" "${REPO:-}"
+  ask CHECKOUT "Absolute path of your local checkout of $GH_USER/$REPO" "${CHECKOUT:-}"
+  { valid_name "$GH_USER" && valid_name "$REPO"; } || die "invalid user or repository name"
+  [[ "$CHECKOUT" == /* ]] || die "checkout path must be absolute"
+  git -C "$CHECKOUT" rev-parse --git-dir >/dev/null || die "$CHECKOUT is not a Git checkout"
+  local origin
+  origin="$(git -C "$CHECKOUT" remote get-url origin)"
+  [[ "$origin" =~ [:/]$GH_USER/$REPO(\.git)?/?$ ]] ||
+    die "origin of $CHECKOUT is $origin, not $GH_USER/$REPO"
+  gh_api "/repos/$GH_USER/$REPO" >/dev/null || die "$GH_USER/$REPO not found or not public"
+
+  if [[ -z "${KAFES_OWNER:-}" ]]; then
+    manual \
+      "Create the kafes account. Recommended: a free organization you own." \
+      "  https://github.com/account/organizations/new?plan=free" \
+      "  Name it e.g. $GH_USER-kafes. Contact email: yours (it is not the commit identity)." \
+      "  'This organization belongs to': My personal account. Invite no members." \
+      "Alternative: a separate machine-user account with 2FA enabled."
+  fi
+  ask KAFES_OWNER "kafes organization or machine user" "${KAFES_OWNER:-$GH_USER-kafes}"
+  valid_name "$KAFES_OWNER" || die "invalid kafes owner"
+  [[ "$KAFES_OWNER" != "$GH_USER" ]] || die "the kafes owner must not be your own account"
+  gh_api "/users/$KAFES_OWNER" >/dev/null || die "$KAFES_OWNER not found on GitHub"
+
+  if ! gh_api "/repos/$KAFES_OWNER/$REPO" >/dev/null 2>&1; then
+    manual \
+      "Fork YOUR fork (not upstream) into $KAFES_OWNER:" \
+      "  https://github.com/$GH_USER/$REPO/fork" \
+      "  Owner: $KAFES_OWNER. Repository name: $REPO (keep it)." \
+      "  'Copy the main branch only' may stay checked."
+  fi
+  local parent
+  parent="$(gh_api "/repos/$KAFES_OWNER/$REPO" | jq -r '.parent.full_name // empty')" ||
+    die "$KAFES_OWNER/$REPO not found; create the fork first"
+  [[ "$parent" == "$GH_USER/$REPO" ]] ||
+    die "$KAFES_OWNER/$REPO is a fork of '${parent:-nothing}', not of $GH_USER/$REPO"
+  manual \
+    "Disable Actions on the kafes fork:" \
+    "  https://github.com/$KAFES_OWNER/$REPO/settings/actions" \
+    "  Actions permissions: 'Disable actions'. Save."
+  info "kafes reads $GH_USER/$REPO and $KAFES_OWNER/$REPO with anonymous Git and API calls;" \
+    "both must stay public."
+
+  if [[ ! -f "$PUSH_CFG/app.pem" ]]; then
+    manual \
+      "Register a GitHub App owned by $KAFES_OWNER:" \
+      "  https://github.com/organizations/$KAFES_OWNER/settings/apps/new" \
+      "  (machine user: https://github.com/settings/apps/new, signed in as it)" \
+      "  Name: $KAFES_OWNER (allowed: it's the owner's own name; the bot becomes ${KAFES_OWNER}[bot])." \
+      "    If taken, any unique name up to 34 characters.  Homepage URL: https://github.com/$KAFES_OWNER" \
+      "  Callback URL, Setup URL, Webhook URL and secret: blank." \
+      "  'Expire user authorization tokens': leave checked." \
+      "  Unchecked: 'Request user authorization (OAuth) during installation'," \
+      "    'Enable Device Flow', 'Redirect on update', Webhook 'Active'." \
+      "  Repository permissions: Contents = Read and write; Metadata = Read-only;" \
+      "    everything else, including Workflows and Pull requests, No access." \
+      "  Organization and account permissions: none." \
+      "  Where can this GitHub App be installed: Only on this account." \
+      "Then on the App page, Private keys -> Generate a private key." \
+      "  Leave the downloaded .pem where the browser saved it."
+    local pem
+    ask pem "Path of the downloaded .pem" "$(ls -t "$HOME"/Downloads/*.private-key.pem 2>/dev/null | head -n1)"
+    [[ -f "$pem" ]] || die "$pem not found"
+    openssl pkey -in "$pem" -noout 2>/dev/null || die "$pem is not a private key"
+    mkdir -p "$PUSH_CFG"
+    install -m 600 "$pem" "$PUSH_CFG/app.pem"
+    rm -- "$pem"
+    info "key stored in $PUSH_CFG/app.pem; the download is deleted"
+  fi
+  ask KAFES_APP_CLIENT_ID "App Client ID (App settings, 'About')" "${KAFES_APP_CLIENT_ID:-}"
+  [[ "$KAFES_APP_CLIENT_ID" =~ ^Iv[0-9A-Za-z.]+$ ]] || die "a Client ID starts with Iv"
+
+  if [[ -z "${KAFES_APP_INSTALLATION_ID:-}" ]]; then
+    manual \
+      "Install the App: App settings -> Install App -> Install on $KAFES_OWNER." \
+      "  Repository access: Only select repositories -> $KAFES_OWNER/$REPO only." \
+      "The browser then shows .../settings/installations/<number>; that number" \
+      "is the installation ID."
+  fi
+  ask KAFES_APP_INSTALLATION_ID "Installation ID" "${KAFES_APP_INSTALLATION_ID:-}"
+  [[ "$KAFES_APP_INSTALLATION_ID" =~ ^[0-9]+$ ]] || die "the installation ID is a number"
+
+  local slug bot
+  ask slug "App slug (the last part of the App's settings URL)" "${KAFES_NAME:+${KAFES_NAME%\[bot\]}}"
+  bot="$(gh_api "/users/$slug%5Bbot%5D")" || die "no bot user ${slug}[bot]; check the slug"
+  KAFES_NAME="$(jq -r .login <<<"$bot")"
+  KAFES_EMAIL="$(jq -r .id <<<"$bot")+$KAFES_NAME@users.noreply.github.com"
+  info "kafes commit identity: $KAFES_NAME <$KAFES_EMAIL>"
+  save_config
+}
+
+setup_proxy_files() {
+  say "4-5. Trusted files and push proxy"
+  write_trusted_files
+  local src
+  src="$(dirname "$(readlink -f "$0")")"
+  if [[ "$src" != "$SANDBOX" ]]; then
+    local file
+    for file in kafes-push-proxy.ts kafes-pr-check.yml kafes; do
+      [[ -f "$src/$file" ]] || die "$file not found next to this script"
+      install -m 644 "$src/$file" "$SANDBOX/$file"
+    done
+    chmod 755 "$SANDBOX/kafes"
+    info "copied the proxy, the check workflow and kafes into $SANDBOX"
+  fi
+  link_command
+  info "trusted files written to $SANDBOX (no secrets)"
+  confirm "Have you read $SANDBOX/kafes-push-proxy.ts?" ||
+    die "read the proxy before running it"
+}
+
+setup_acl() {
+  say "5a. Block the workshop from the host's network"
+  local bridge="${WORKSHOP_BRIDGE:-}"
+  if [[ -z "$bridge" ]]; then
+    info "LXD bridges:"
+    sudo lxc network list --format csv | awk -F, '$2 == "bridge" { print "      " $1 }'
+    info "Workshop's bridge is not known in advance; it is lxdbr0 unless you set another."
+    ask bridge "Bridge the workshop containers use" lxdbr0
+  fi
+  sudo lxc network show "$bridge" >/dev/null || die "no LXD network $bridge"
+  if ! sudo lxc network acl show "$ACL" >/dev/null 2>&1; then
+    sudo lxc network acl create "$ACL"
+    sudo lxc network acl rule add "$ACL" egress action=reject destination=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,169.254.0.0/16,100.64.0.0/10
+    sudo lxc network acl rule add "$ACL" egress action=reject destination=fc00::/7,fe80::/10
+    sudo lxc network acl rule add "$ACL" egress action=allow
+    sudo lxc network acl rule add "$ACL" ingress action=allow
+  fi
+  local current
+  current="$(sudo lxc network get "$bridge" security.acls)"
+  if [[ ",$current," != *",$ACL,"* ]]; then
+    BRIDGE_ACLS_BEFORE="$current"
+    sudo lxc network set "$bridge" security.acls="${current:+$current,}$ACL"
+  fi
+  WORKSHOP_BRIDGE="$bridge"
+  save_config
+  info "$ACL attached to $bridge (previous ACLs: '${BRIDGE_ACLS_BEFORE:-}')"
+}
+
+# The kafes-checks commit. It has no parent and no author-specific data, so the
+# same workflow file always produces the same commit: a re-run recognises its
+# own earlier commit, local or pushed, and never creates a second one.
+checks_commit() {
+  local blob wf gh root
+  blob="$(git -C "$CHECKOUT" hash-object -w --no-filters -- "$1")"
+  wf="$(printf '100644 blob %s\tkafes-pr-check.yml\n' "$blob" | git -C "$CHECKOUT" mktree)"
+  gh="$(printf '040000 tree %s\tworkflows\n' "$wf" | git -C "$CHECKOUT" mktree)"
+  root="$(printf '040000 tree %s\t.github\n' "$gh" | git -C "$CHECKOUT" mktree)"
+  GIT_AUTHOR_NAME=kafes GIT_AUTHOR_EMAIL=kafes@localhost GIT_AUTHOR_DATE='1970-01-01T00:00:00Z' \
+    GIT_COMMITTER_NAME=kafes GIT_COMMITTER_EMAIL=kafes@localhost GIT_COMMITTER_DATE='1970-01-01T00:00:00Z' \
+    git -C "$CHECKOUT" commit-tree "$root" -m 'Add kafes PR edit-rule check'
+}
+
+setup_check() {
+  say "6. Edit-rule check on $FORK"
+  local src default want local_sha remote
+  src="$SANDBOX/kafes-pr-check.yml"
+  [[ -f "$src" ]] || die "$src missing; re-run setup from the repository copy"
+
+  # A worktree left by an earlier kafes version still holds kafes-checks.
+  if git -C "$CHECKOUT" worktree list --porcelain | grep -Fxq "worktree $KAFES/checks"; then
+    manual \
+      "An earlier kafes left a worktree at $KAFES/checks. Check it holds nothing you need:" \
+      "  git -C '$KAFES/checks' status --short" \
+      "then remove it:  git -C '$CHECKOUT' worktree remove '$KAFES/checks'" \
+      "(if the directory is already gone:  git -C '$CHECKOUT' worktree prune)"
+    ! git -C "$CHECKOUT" worktree list --porcelain | grep -Fxq "worktree $KAFES/checks" ||
+      die "the worktree is still registered"
+  fi
+
+  want="$(checks_commit "$src")"
+  remote="$(remote_sha "$FORK" kafes-checks)"
+  if [[ -z "$remote" ]]; then
+    confirm "Have you read $src? It runs with a token that can write to your fork." ||
+      die "read the workflow first"
+    local_sha="$(git -C "$CHECKOUT" rev-parse -q --verify refs/heads/kafes-checks || true)"
+    if [[ -z "$local_sha" ]]; then
+      git -C "$CHECKOUT" update-ref refs/heads/kafes-checks "$want" ""
+      info "created the local branch kafes-checks in $CHECKOUT (nothing checked out)"
+    elif [[ "$local_sha" == "$want" ]]; then
+      info "kafes-checks already exists locally from an earlier run"
+    elif [[ -z "$(git -C "$CHECKOUT" log -1 --format=%P "$local_sha")" ]] &&
+      git -C "$CHECKOUT" diff --quiet "$local_sha" "$want"; then
+      want="$local_sha" # an earlier kafes version's commit with the same content
+      info "kafes-checks already exists locally with this workflow"
+    else
+      die "a local kafes-checks branch with other content exists in $CHECKOUT; inspect or rename it"
+    fi
+    manual_push "$want" kafes-checks "Publish the edit-rule check as $FORK's kafes-checks branch."
+    remote="$want"
+  fi
+  # Whatever is on the fork, only the reviewed workflow file may be on it.
+  anon_fetch "$FORK" kafes-checks
+  [[ "$(git -C "$CHECKOUT" ls-tree -r --name-only "$remote")" == .github/workflows/kafes-pr-check.yml ]] ||
+    die "$FORK's kafes-checks holds more than the check workflow; inspect it before going on"
+  git -C "$CHECKOUT" diff --quiet "$remote" "$want" -- ||
+    warn "$FORK's kafes-checks differs from $src: review the change, then update it with a normal commit and push"
+  info "kafes-checks is on $FORK at ${remote:0:12}"
+
+  default="$(gh_api "/repos/$FORK" | jq -r .default_branch)"
+  if [[ "$default" != kafes-checks ]]; then
+    [[ -f "$STATE/default-branch-before" ]] || {
+      mkdir -p "$STATE"
+      printf '%s\n' "$default" >"$STATE/default-branch-before"
+    }
+    manual \
+      "Make kafes-checks the default branch of $FORK (currently $default):" \
+      "  https://github.com/$FORK/settings  -> Default branch -> switch to kafes-checks"
+    [[ "$(gh_api "/repos/$FORK" | jq -r .default_branch)" == kafes-checks ]] ||
+      die "the default branch is still not kafes-checks"
+  fi
+
+  if rules_ok; then
+    info "ruleset on kafes-base/** verified"
+    return 0
+  fi
+  manual \
+    "Create two repository VARIABLES (not secrets) on $FORK, or check they're set:" \
+    "  https://github.com/$FORK/settings/variables/actions" \
+    "  KAFES_FORK  = $KAFES_FORK" \
+    "  KAFES_EMAIL = $KAFES_EMAIL" \
+    "Allow Actions on $FORK (forks start with workflows disabled):" \
+    "  https://github.com/$FORK/actions  -> 'I understand my workflows, go ahead and enable them'"
+  bootstrap_status
+  manual \
+    "Create the ruleset: https://github.com/$FORK/settings/rules/new?target=branch" \
+    "  (if a kafes-base ruleset already exists, edit it instead)" \
+    "  Name: kafes-base. Enforcement: Active. Bypass list: EMPTY." \
+    "  Target branches -> Add target -> Include by pattern: kafes-base/**" \
+    "  Rules: Restrict deletions; Block force pushes;" \
+    "    Require status checks to pass -> Add checks -> kafes-pr-check," \
+    "    and set its source to 'GitHub Actions' (never 'Any source')." \
+    "    Also tick 'Do not require status checks on creation', so you can create" \
+    "    kafes-base/<task> branches; merges into them still need the check." \
+    "  If the check or source is missing, refresh the editor and add it again."
+  rules_ok || die "the ruleset on kafes-base/** is not as required; fix it and re-run setup"
+  info "ruleset on kafes-base/** verified"
+}
+
+# Verifies, through the public API, the rules that apply to a kafes-base branch.
+rules_ok() {
+  local rules
+  rules="$(gh_api "/repos/$FORK/rules/branches/kafes-base%2Fsetup-check")" || return 1
+  jq -e '
+    (map(.type) | index("deletion") and index("non_fast_forward")) and
+    any(.[]; .type == "required_status_checks" and
+      .parameters.do_not_enforce_on_create == true and
+      any(.parameters.required_status_checks[]; .context == "kafes-pr-check" and .integration_id == 15368))
+  ' <<<"$rules" >/dev/null
+}
+
+bootstrap_status() {
+  info "GitHub Actions only appears as a status source once it has posted one."
+  local seed sha kafes_default
+  sha="$(remote_sha "$FORK" kafes-base/setup)"
+  if [[ -n "$sha" ]]; then
+    info "kafes-base/setup already exists on $FORK (${sha:0:12}); reusing it"
+  else
+    ask seed "Branch of $FORK to cut kafes-base/setup from (your feature branch or main, never kafes-checks)" \
+      "$(cat "$STATE/default-branch-before" 2>/dev/null || echo main)"
+    [[ "$seed" != kafes-checks ]] || die "never cut kafes-base branches from kafes-checks"
+    sha="$(remote_sha "$FORK" "$seed")"
+    [[ -n "$sha" ]] || die "$seed not found on $FORK"
+    anon_fetch "$FORK" "$seed"
+    manual_push "$sha" "$sha:refs/heads/kafes-base/setup" \
+      "Create the throwaway base branch kafes-base/setup on $FORK, at $seed."
+  fi
+  kafes_default="$(gh_api "/repos/$KAFES_FORK" | jq -r .default_branch)"
+  manual \
+    "Open a dummy PR from the kafes fork into kafes-base/setup:" \
+    "  (if one is already open from an earlier run, use it and skip to 3)" \
+    "  1. https://github.com/$KAFES_FORK/new/$kafes_default?filename=docs/kafes-setup-dummy.md" \
+    "     Content: anything. Choose 'Create a new branch' (e.g. setup-dummy), propose." \
+    "  2. https://github.com/$FORK/compare/kafes-base/setup...$KAFES_OWNER:$REPO:setup-dummy?expand=1" \
+    "     Create the pull request." \
+    "  3. Wait for a 'kafes-pr-check' status (failing is fine), then close the PR" \
+    "     WITHOUT merging and delete the setup-dummy branch on the kafes fork."
+}
+
+setup_verify() {
+  say "Verifying the services"
+  start_services
+  info "broker, gateway and push proxy are running"
+  local probe="http://localhost:4100/$KAFES_FORK.git"
+  git -c "include.path=$PUSH_CFG/client.gitconfig" ls-remote "$probe" HEAD >/dev/null ||
+    die "git ls-remote through the proxy failed; check: journalctl --user -u $UNIT_PROXY"
+  info "the App can read $KAFES_FORK through the proxy"
+  stop_services
+}
+
+cmd_setup() {
+  setup_tools
+  setup_logins
+  setup_github_accounts
+  load_config
+  setup_proxy_files
+  setup_acl
+  setup_check
+  setup_verify
+  say "Setup complete. Start a task with:"
+  info "kafes task new <task> <feature-branch>"
+}
+
+# Makes `kafes` a plain command: ~/.local/bin/kafes -> ~/kafes/sandbox/kafes.
+link_command() {
+  mkdir -p "$(dirname "$BIN_LINK")"
+  if [[ -L "$BIN_LINK" && "$(readlink "$BIN_LINK")" == "$SANDBOX/kafes" ]]; then
+    : # already linked
+  elif [[ -e "$BIN_LINK" || -L "$BIN_LINK" ]]; then
+    warn "$BIN_LINK exists and isn't kafes's link; left alone. Run $SANDBOX/kafes instead."
+    return 0
+  else
+    ln -s "$SANDBOX/kafes" "$BIN_LINK"
+    info "linked $BIN_LINK -> $SANDBOX/kafes"
+  fi
+  case ":$PATH:" in
+  *":$HOME/.local/bin:"*) info "from now on, run it as: kafes" ;;
+  *) warn "$HOME/.local/bin is not on PATH yet. Ubuntu's ~/.profile adds it at your next" \
+    "login; until then: export PATH=\"\$HOME/.local/bin:\$PATH\"" ;;
+  esac
+}
+
+# --- Host services ------------------------------------------------------------
+
+# Runs a command as a transient systemd user service. Logs go to the journal:
+#   journalctl --user -u <unit>
+run_unit() { # run_unit UNIT [systemd-run options...] -- COMMAND...
+  local unit="$1"
+  shift
+  systemctl --user reset-failed "$unit.service" 2>/dev/null || true
+  systemd-run --user --quiet --unit="$unit" -p TimeoutStopSec=60 \
+    --setenv=HOME="$HOME" --setenv=PATH="$HOME/.bun/bin:/usr/local/bin:/usr/bin:/bin" \
+    --working-directory="$SANDBOX" "$@"
+}
+
+port_free() { ! curl -s -o /dev/null --max-time 2 "http://127.0.0.1:$1/"; }
+
+start_services() {
+  if ! unit_active "$UNIT_BROKER"; then
+    port_free 8765 || die "port 8765 is in use by something else"
+    run_unit "$UNIT_BROKER" -- "$OMP" auth-broker serve --bind=127.0.0.1:8765
+    wait_http "$BROKER_URL/v1/healthz" 200 30 || die "broker did not start; journalctl --user -u $UNIT_BROKER"
+  fi
+  if ! unit_active "$UNIT_GATEWAY"; then
+    port_free 4000 || die "port 4000 is in use by something else"
+    [[ -f "$GATEWAY_CFG/clients.json" ]] || write_clients '{}'
+    run_unit "$UNIT_GATEWAY" --setenv=OMP_AUTH_BROKER_URL="$BROKER_URL" -- \
+      "$OMP" auth-gateway serve --bind=127.0.0.1:4000 --clients="$GATEWAY_CFG/clients.json"
+    wait_http http://127.0.0.1:4000/healthz 200 30 || die "gateway did not start; journalctl --user -u $UNIT_GATEWAY"
+  fi
+  if ! unit_active "$UNIT_PROXY"; then
+    port_free 4100 || die "port 4100 is in use by something else"
+    # A fresh proxy client credential per proxy start; the proxy reads it once.
+    mkdir -p "$PUSH_CFG"
+    openssl rand -hex 32 >"$PUSH_CFG/client.token"
+    printf '[http "http://localhost:4100/"]\n\textraHeader = Authorization: Bearer %s\n' \
+      "$(cat "$PUSH_CFG/client.token")" >"$PUSH_CFG/client.gitconfig"
+    run_unit "$UNIT_PROXY" \
+      --setenv=KAFES_PUSH_REPO="$KAFES_FORK" \
+      --setenv=KAFES_APP_CLIENT_ID="$KAFES_APP_CLIENT_ID" \
+      --setenv=KAFES_APP_INSTALLATION_ID="$KAFES_APP_INSTALLATION_ID" \
+      --setenv=KAFES_PUSH_CLIENT_TOKEN_FILE="$PUSH_CFG/client.token" \
+      --setenv=KAFES_APP_KEY="$PUSH_CFG/app.pem" -- \
+      "$BUN" --no-env-file --config=./bunfig.toml ./kafes-push-proxy.ts
+    # 403 for an unauthenticated, disallowed path: the listener is up.
+    wait_http http://127.0.0.1:4100/ 403 30 || die "push proxy did not start; journalctl --user -u $UNIT_PROXY"
+  fi
+}
+
+# Stops the push proxy and reports whether every token was revoked.
+stop_proxy() {
+  unit_active "$UNIT_PROXY" || return 0
+  info "stopping the push proxy (revoking tokens; up to ~30 s)"
+  local invocation
+  invocation="$(systemctl --user show -p InvocationID --value "$UNIT_PROXY.service")"
+  systemctl --user stop "$UNIT_PROXY.service" || true
+  sleep 1 # journald may lag the exit
+  journalctl --user _SYSTEMD_INVOCATION_ID="$invocation" --no-pager -o cat 2>/dev/null |
+    grep -iE 'revo|mint|fatal' | sed 's/^/      /' || true
+  if [[ "$(systemctl --user show -p Result --value "$UNIT_PROXY.service")" == success ]]; then
+    info "push proxy stopped cleanly"
+    systemctl --user reset-failed "$UNIT_PROXY.service" 2>/dev/null || true
+  else
+    systemctl --user reset-failed "$UNIT_PROXY.service" 2>/dev/null || true
+    warn "revocation or a mint failed: an installation token may stay valid for up to 1 h"
+    return 1
+  fi
+}
+
+stop_services() {
+  local status=0
+  stop_proxy || status=1
+  rm -f -- "$PUSH_CFG/client.token" "$PUSH_CFG/client.gitconfig"
+  local unit
+  for unit in "$UNIT_GATEWAY" "$UNIT_BROKER"; do
+    if unit_active "$unit"; then systemctl --user stop "$unit.service"; fi
+    systemctl --user reset-failed "$unit.service" 2>/dev/null || true
+  done
+  return "$status"
+}
+
+# --- Workshop checks ----------------------------------------------------------
+
+# `workshop connections dev` also lists unconnected plugs and slots, with "-"
+# on the missing side. Those give the workshop nothing, so both checks judge
+# only real connections (a plug and a slot both named) and fail closed on any
+# connection or line shape they don't recognise. Observed right after launch:
+#   INTERFACE  PLUG                    SLOT                      NOTES
+#   mount      dev/node:npm-cache      dev/system:mount          -
+#   tunnel     -                       dev/node:inspector        -
+#   tunnel     -                       dev/system:kafes-gateway  -
+#   tunnel     dev/node:kafes-gateway  -                         -
+
+# Prints the connected package-cache plugs, which must be disconnected.
+cache_plugs() {
+  ws "$1" connections dev | awk '
+    NR == 1 { if ($1 != "INTERFACE" || $2 != "PLUG" || $3 != "SLOT") bad = 1; next }
+    NF < 3 { bad = 1; print "unexpected: " $0 > "/dev/stderr"; next }
+    $2 == "-" || $3 == "-" { next }
+    $1 == "mount" && $2 ~ /^dev\/node:[a-z0-9-]+$/ && $3 == "dev/system:mount" { print $2; next }
+    { bad = 1; print "unexpected: " $0 > "/dev/stderr" }
+    END { exit bad }'
+}
+
+# Exactly the two tunnels are connected; nothing else is.
+connections_ok() {
+  ws "$1" connections dev | awk '
+    NR == 1 { if ($1 != "INTERFACE" || $2 != "PLUG" || $3 != "SLOT") bad = 1; next }
+    NF < 3 { bad = 1; print "unexpected: " $0 > "/dev/stderr"; next }
+    $2 == "-" || $3 == "-" { next }
+    $1 == "tunnel" && $2 == "dev/node:kafes-gateway" && $3 == "dev/system:kafes-gateway" { gw++; next }
+    $1 == "tunnel" && $2 == "dev/node:kafes-push" && $3 == "dev/system:kafes-push" { push++; next }
+    { bad = 1; print "unexpected: " $0 > "/dev/stderr" }
+    END { exit (bad || gw != 1 || push != 1) }'
+}
+
+ip_to_int() {
+  local IFS=. a b c d
+  read -r a b c d <<<"$1"
+  echo $(((a << 24) | (b << 16) | (c << 8) | d))
+}
+
+# Reads the bridge's ACLs and subnet. Needs sudo, so `task new` runs this
+# first, before it starts anything that would need cleaning up. Sets BRIDGE_CIDR.
+bridge_state() {
+  local acls
+  info "checking $ACL on $WORKSHOP_BRIDGE; sudo may ask you to authenticate"
+  sudo -v || die "sudo is needed to read the LXD bridge; nothing was started"
+  acls="$(sudo lxc network get "$WORKSHOP_BRIDGE" security.acls)"
+  [[ ",$acls," == *",$ACL,"* ]] || die "$ACL is no longer attached to $WORKSHOP_BRIDGE; re-run setup"
+  BRIDGE_CIDR="$(sudo lxc network get "$WORKSHOP_BRIDGE" ipv4.address)"
+  [[ "$BRIDGE_CIDR" =~ ^[0-9.]+/[0-9]+$ ]] || die "can't read the IPv4 subnet of $WORKSHOP_BRIDGE"
+}
+
+# The workshop must sit on the bridge that carries the ACL (see bridge_state).
+acl_ok() {
+  local task="$1" net bits addr mask
+  [[ "$BRIDGE_CIDR" =~ ^([0-9.]+)/([0-9]+)$ ]] || die "bridge subnet not read"
+  net="$(ip_to_int "${BASH_REMATCH[1]}")"
+  bits="${BASH_REMATCH[2]}"
+  mask=$(((0xffffffff << (32 - bits)) & 0xffffffff))
+  for addr in $(ws "$task" exec dev -- hostname -I </dev/null); do
+    [[ "$addr" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || continue
+    (((($(ip_to_int "$addr") ^ net) & mask) == 0)) && return 0
+  done
+  die "the workshop is not on $WORKSHOP_BRIDGE ($BRIDGE_CIDR); fix WORKSHOP_BRIDGE in $CONFIG and re-run setup"
+}
+
+# --- Host OMP settings ----------------------------------------------------------
+
+# Host settings copied into each workshop: model choice, fallbacks and display
+# only. Everything else stays on the host, including credentials, tool and
+# approval policy, bash and eval settings, extensions, MCP, hooks, discovery
+# sources (enabledProviders) and remote compaction endpoints.
+SETTINGS_KEYS='^(modelRoles|modelPresets|modelTags|modelProviderOrder|cycleOrder|enabledModels|disabledProviders|defaultThinkingLevel|hideThinkingBlock|expandThinkingBlocks|personality|includeModelInPrompt|colorBlindMode|completion\.notify|images\.blockImages|(retry|thinkingBudgets|display|statusLine|theme)\..+|compaction\.(?!remote).+)$'
+DEFAULT_PROVIDERS=(github-copilot openrouter)
+
+# Reads the host's global OMP settings (only keys set there, never env or
+# project values) and prints {copied: <nested settings>, dropped: [ids]}.
+# A key is dropped if it's off the allowlist, a credential (redacted), or holds
+# any "!..." value, which OMP would run as a shell command.
+host_settings() {
+  local list
+  list="$(cd "$SANDBOX" && "$OMP" config list --scope global --json)" ||
+    die "omp config list failed on the host"
+  jq -c --arg keep "$SETTINGS_KEYS" '
+    def runs_shell: [.. | strings | select(startswith("!"))] | length > 0;
+    to_entries
+    | map(.key as $k | .value as $v | {
+        key: $k,
+        value: ($v.value?),
+        ok: (($v | type) == "object" and ($v | has("value")) and ($v.redacted? != true)
+             and ($k | test($keep)) and (($v.value | runs_shell) | not))
+      })
+    | {
+        copied: (map(select(.ok))
+          # Path-scoped entries name host directories; keep plain entries only.
+          | map(if (.key | test("^(enabledModels|disabledProviders)$")) and (.value | type) == "array"
+                then .value |= map(select(type == "string")) else . end)
+          | reduce .[] as $e ({}; setpath($e.key | split("."); $e.value))),
+        dropped: map(select(.ok | not) | .key)
+      }' <<<"$list"
+}
+
+# Providers named by copied model roles, presets and fallback chains.
+referenced_providers() {
+  jq -r '
+    [(.modelRoles, (.modelPresets // {} | .[] | .modelRoles?), (.retry.fallbackChains // {} | keys, .[]))
+      | .. | strings | split(",")[] | gsub("^\\s+|\\s+$"; "")
+      | select(contains("/")) | split("/")[0]]
+    | unique[]' <<<"$1"
+}
+
+# Providers the host gateway serves, i.e. those the broker holds credentials
+# for. The gateway token is passed on stdin, never on a command line.
+served_providers() {
+  local token
+  token="$(cd "$SANDBOX" && "$OMP" auth-gateway token)" || die "can't read the gateway token"
+  printf 'Authorization: Bearer %s\n' "$token" |
+    curl -fsS --max-time 15 -H @- http://127.0.0.1:4000/v1/models |
+    jq -r '[.data[].id | split("/")[0]] | unique[]' # ids are provider-qualified
+}
+
+# Sets TASK_CONFIG (workshop config.yml), TASK_PROVIDERS (routed and granted).
+prepare_task_settings() {
+  local settings served referenced p
+  settings="$(host_settings)"
+  TASK_CONFIG="$(jq '.copied' <<<"$settings")"
+  served="$(served_providers)" || die "can't list the gateway's models"
+  referenced="$(referenced_providers "$TASK_CONFIG")"
+  TASK_PROVIDERS=()
+  for p in "${DEFAULT_PROVIDERS[@]}" $referenced; do
+    [[ "$p" =~ ^[a-z0-9][a-z0-9-]*$ ]] || continue
+    [[ " ${TASK_PROVIDERS[*]} " == *" $p "* ]] && continue
+    if grep -Fxq -- "$p" <<<"$served"; then
+      TASK_PROVIDERS+=("$p")
+    elif grep -Fxq -- "$p" <<<"$referenced"; then
+      warn "your settings use '$p', which the host gateway doesn't serve, so roles" \
+        "and fallbacks on it will fail in the workshop. Log it in on the host" \
+        "(omp auth-broker login $p); local and models.yml-only providers can't be served."
+    fi
+  done
+  ((${#TASK_PROVIDERS[@]})) || die "the host gateway serves none of: ${DEFAULT_PROVIDERS[*]} $referenced"
+  info "host settings copied: $(jq -r '[paths(scalars or (type == "array")) | map(select(type == "string")) | .[0:2] | join(".")] | unique | join(", ") | if . == "" then "none" else . end' <<<"$TASK_CONFIG")"
+  info "host settings kept back: $(jq -r '.dropped | if length == 0 then "none" else join(", ") end' <<<"$settings")"
+  info "providers routed through the gateway: ${TASK_PROVIDERS[*]}"
+}
+
+task_models_yml() {
+  local p
+  printf '# Generated by kafes: every provider goes through the host gateway.\nproviders:\n'
+  for p in "${TASK_PROVIDERS[@]}"; do
+    printf '  %s:\n    transport: pi-native\n    baseUrl: http://127.0.0.1:4000\n    apiKey: "!cat %s/.config/kafes-gateway.token"\n' \
+      "$p" "$WS_HOME"
+  done
+}
+
+save_task_settings() {
+  mkdir -p "$STATE"
+  task_models_yml >"$STATE/task-models.yml"
+  printf '# Generated by kafes from allowlisted host settings.\n%s\n' "$TASK_CONFIG" >"$STATE/task-config.yml"
+}
+
+# --- Task workshop helpers ------------------------------------------------------
+
+# Prints a cleanup hint if the command stops part-way, including on Ctrl+C
+# (bash skips the EXIT trap when a signal kills it, so signals become exits).
+arm_failure_hint() {
+  FAILURE_HINT="$1"
+  trap 'rc=$?; ((rc == 0)) || warn "stopped part-way; clean up with: $FAILURE_HINT"' EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+}
+disarm_failure_hint() { trap - EXIT INT TERM; }
+
+require_task() { # require_task TASK running|stopped|any
+  local task="$1" active
+  valid_name "$task" || die "invalid task name: $task"
+  active="$(cat "$STATE/active-task" 2>/dev/null || true)"
+  [[ "$active" == "$task" ]] || die "$task is not the active task (active: ${active:-none})"
+  [[ -d "$TASKS/$task" ]] || die "$TASKS/$task is missing; end the task with: kafes task end $task"
+  case "$2" in
+  running) [[ ! -e "$STOPPED" ]] || die "$task is stopped; resume it with: kafes task start $task" ;;
+  stopped) [[ -e "$STOPPED" ]] || die "$task is already running" ;;
+  esac
+}
+
+check_workshop_network() {
+  connections_ok "$1" || die "connections are not exactly the two tunnels"
+  acl_ok "$1"
+  info "only the two tunnels are connected; $ACL applies"
+}
+
+# The launch directory is mounted into the workshop, so its .workshop/dev.yaml
+# may have been edited inside. Restore the trusted copy while the workshop is
+# stopped (nothing inside runs), refusing a symlinked directory that could
+# point at host files.
+reset_definition() {
+  local dir="$TASKS/$1/.workshop"
+  [[ -d "$dir" && ! -L "$dir" ]] || die "$dir is not a plain directory; end the task instead"
+  rm -f -- "$dir/dev.yaml"
+  cp -- "$SANDBOX/dev.yaml" "$dir/dev.yaml"
+}
+
+# kafes-omp, the agent launcher inside the workshop. Extra arguments go to
+# omp, e.g. `kafes-omp -c` to continue the last session.
+agent_launcher() {
+  cat <<EOF
+#!/bin/sh
+# Rewritten by kafes on every task new, start and shell; edits don't last.
+exec "$WS_HOME/.local/bin/omp" \\
+  --cwd "$WS_HOME/src/$REPO" \\
+  --config "$WS_HOME/.config/kafes-policy.yml" \\
+  --approval-mode always-ask \\
+  --tools read,grep,glob,edit,write,bash \\
+  --no-lsp --no-extensions --no-skills \\
+  --append-system-prompt "$WS_HOME/.config/kafes-prompt.md" \\
+  "\$@"
+EOF
+}
+
+# Rewrites every file that steers the agent from the host's copies, so edits
+# made inside the workshop are undone before OMP next starts.
+push_agent_files() {
+  local task="$1"
+  ws "$task" exec dev -- sh -c 'cat > ~/.config/kafes-policy.yml' <"$SANDBOX/kafes-policy.yml"
+  ws "$task" exec dev -- sh -c 'cat > ~/.config/kafes-prompt.md' <"$SANDBOX/kafes-prompt.md"
+  ws "$task" exec dev -- sh -c 'cat > ~/.omp/agent/models.yml' <"$STATE/task-models.yml"
+  ws "$task" exec dev -- sh -c 'cat > ~/.omp/agent/config.yml' <"$STATE/task-config.yml"
+  ws "$task" exec dev -- sh -c \
+    'mkdir -p ~/.local/bin && cat > ~/.local/bin/kafes-omp && chmod 755 ~/.local/bin/kafes-omp' \
+    <<<"$(agent_launcher)"
+}
+
+# Fresh credentials for this run: the push proxy's client credential (new on
+# every proxy start) and a new gateway client token.
+push_credentials() {
+  local task="$1" token digest
+  ws "$task" exec dev -- sh -c 'umask 077; cat > ~/.config/kafes-push.gitconfig' <"$PUSH_CFG/client.gitconfig"
+  ws "$task" exec dev -- git config --global include.path "$WS_HOME/.config/kafes-push.gitconfig"
+  token="$(openssl rand -hex 32)"
+  digest="$(printf %s "$token" | sha256sum | cut -d' ' -f1)"
+  write_clients "$(jq -cn --arg digest "$digest" \
+    '{"kafes-task": {tokenSha256: $digest, models: ($ARGS.positional | map(. + "/*"))}}' \
+    --args "${TASK_PROVIDERS[@]}")"
+  KAFES_GATEWAY_TOKEN="$token" ws "$task" exec --env KAFES_GATEWAY_TOKEN dev -- \
+    sh -c 'umask 077 && printf %s "$KAFES_GATEWAY_TOKEN" > ~/.config/kafes-gateway.token' # expands in the workshop
+  unset token
+  [[ "$(ws "$task" exec dev -- curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:4000/healthz)" == 200 ]] ||
+    die "the gateway is not reachable from the workshop"
+  info "credentials issued; the gateway loads its token within 10 s"
+}
+
+open_shell() {
+  say "Workshop terminal for $1"
+  info "Run kafes-omp to start the agent; kafes-omp -c continues the last session."
+  info "Leave with exit. The workshop keeps running until kafes task stop or end."
+  ws "$1" shell dev || true
+}
+
+# --- task new -----------------------------------------------------------------
+
+cmd_task_new() {
+  local task="${1:-}" feature="${2:-}"
+  [[ -n "$task" && -n "$feature" ]] || die "usage: task new <task> <feature-branch>"
+  valid_name "$task" || die "invalid task name: $task"
+  git check-ref-format --branch "$feature" >/dev/null 2>&1 || die "invalid branch: $feature"
+  load_config
+  [[ ! -e "$STATE/active-task" ]] ||
+    die "task $(cat "$STATE/active-task") is still active; end it first"
+  [[ ! -e "$TASKS/$task" ]] || die "$TASKS/$task already exists"
+  rules_ok || die "the kafes-base/** ruleset is missing or changed; re-run setup"
+  bridge_state
+
+  say "Base branch"
+  local base="kafes-base/$task" sha existing
+  sha="$(remote_sha "$FORK" "$feature")"
+  [[ -n "$sha" ]] || die "$feature not found on $FORK"
+  existing="$(remote_sha "$FORK" "$base")"
+  if [[ -z "$existing" ]]; then
+    anon_fetch "$FORK" "$feature"
+    manual_push "$sha" "$sha:refs/heads/$base" "Create this task's base branch $base on $FORK, at $feature."
+    info "created $base at $feature ($sha)"
+  else
+    confirm "$base already exists at $existing; reuse it?" || die "stopped"
+  fi
+
+  mkdir -p "$STATE"
+  printf '%s\n' "$task" >"$STATE/active-task"
+  rm -f -- "$STOPPED"
+  # From here on, a failure or Ctrl+C leaves services, credentials or a
+  # workshop behind.
+  arm_failure_hint "kafes task end $task"
+
+  say "Host services"
+  start_services
+  prepare_task_settings
+  save_task_settings
+
+  say "Launch the task workshop"
+  mkdir -p "$TASKS/$task/.workshop"
+  cp "$SANDBOX/dev.yaml" "$TASKS/$task/.workshop/dev.yaml"
+  ws "$task" launch dev
+  local plugs plug
+  info "reading the workshop's connections"
+  plugs="$(cache_plugs "$task")" || die "unexpected connections"
+  for plug in $plugs; do
+    info "disconnecting package cache $plug"
+    ws "$task" disconnect "$plug"
+  done
+  info "connecting the gateway and push tunnels"
+  ws "$task" connect dev/node:kafes-gateway dev/system:kafes-gateway
+  ws "$task" connect dev/node:kafes-push dev/system:kafes-push
+  check_workshop_network "$task"
+
+  say "Set up the workshop"
+  ws "$task" exec dev -- sh -c 'cat > /tmp/setup-workshop.sh' <"$SANDBOX/setup-workshop.sh"
+  ws "$task" exec dev -- sh /tmp/setup-workshop.sh
+  push_agent_files "$task"
+  push_credentials "$task"
+
+  say "Clone $FORK at $base"
+  local src="$WS_HOME/src/$REPO"
+  ws "$task" exec dev -- git clone --branch "$base" "https://github.com/$FORK.git" "$src"
+  ws "$task" exec dev -- git -C "$src" switch -c "kafes/$task"
+  ws "$task" exec dev -- git -C "$src" remote add kafes "http://localhost:4100/$KAFES_FORK.git"
+  ws "$task" exec dev -- git -C "$src" config user.name "$KAFES_NAME"
+  ws "$task" exec dev -- git -C "$src" config user.email "$KAFES_EMAIL"
+  ws "$task" exec --env CYPRESS_INSTALL_BINARY=0 dev -- \
+    sh -c "cd '$src' && ~/.local/bin/yarn install --frozen-lockfile"
+  disarm_failure_hint
+
+  say "Task $task is ready"
+  info "kafes task shell $task   open its terminal; run kafes-omp there to start the agent"
+  info "kafes task stop $task    pause: revoke its credentials and stop the workshop"
+  info "kafes task end $task     finish, once the agent has pushed kafes/$task"
+  if confirm "Open the workshop terminal now?"; then
+    open_shell "$task"
+  fi
+}
+
+# --- task shell / stop / start ----------------------------------------------------
+
+cmd_task_shell() {
+  local task="${1:-}"
+  [[ -n "$task" ]] || die "usage: task shell <task>"
+  load_config
+  require_task "$task" running
+  info "restoring the agent's launcher, policy, prompt and model settings from the host"
+  push_agent_files "$task"
+  open_shell "$task"
+}
+
+# Pausing never needs `workshop refresh` or `restore`: it only stops the
+# container, and kafes revokes the workshop's credentials first.
+cmd_task_stop() {
+  local task="${1:-}" status=0
+  [[ -n "$task" ]] || die "usage: task stop <task>"
+  load_config
+  require_task "$task" any
+
+  say "Revoke credentials and stop host services"
+  stop_proxy || status=1
+  write_clients '{}'
+  info "gateway client token revoked"
+  stop_services || status=1
+
+  say "Stop the workshop"
+  if [[ -e "$STOPPED" ]]; then
+    info "already stopped"
+  else
+    ws "$task" stop dev || die "workshop stop failed; credentials are revoked, the workshop still runs"
+    : >"$STOPPED"
+    info "stopped; its files, OMP sessions and installed packages are kept"
+  fi
+  info "Resume with: kafes task start $task"
+  return "$status"
+}
+
+cmd_task_start() {
+  local task="${1:-}"
+  [[ -n "$task" ]] || die "usage: task start <task>"
+  load_config
+  require_task "$task" stopped
+  bridge_state
+  arm_failure_hint "kafes task stop $task"
+
+  say "Host services"
+  start_services
+  prepare_task_settings
+  save_task_settings
+
+  say "Start the task workshop"
+  reset_definition "$task"
+  ws "$task" start dev
+  rm -f -- "$STOPPED"
+  check_workshop_network "$task"
+  push_agent_files "$task"
+  push_credentials "$task"
+  sleep 10 # let the gateway load the new token before OMP's first request
+  disarm_failure_hint
+
+  say "Task $task is running"
+  info "kafes task shell $task, then kafes-omp -c to continue the last session"
+}
+
+# --- task end -----------------------------------------------------------------
+
+cmd_task_end() {
+  local task="${1:-}"
+  [[ -n "$task" ]] || die "usage: task end <task>"
+  valid_name "$task" || die "invalid task name: $task"
+  load_config
+  local status=0
+
+  say "Stop host services and revoke credentials"
+  stop_proxy || status=1
+  write_clients '{}'
+  info "gateway client token revoked"
+  stop_services || status=1
+
+  say "Remove the workshop"
+  if [[ -d "$TASKS/$task" ]]; then
+    # The directory is agent-controlled: only workshop reads it, then it goes.
+    ws "$task" remove dev || die "workshop remove failed; keep $TASKS/$task and fix it (see 'sudo lxc list')"
+    rm -rf -- "${TASKS:?}/$task"
+    info "workshop and $TASKS/$task removed"
+  else
+    warn "$TASKS/$task is gone; check 'sudo lxc list' for a leftover container"
+  fi
+  [[ "$(cat "$STATE/active-task" 2>/dev/null)" != "$task" ]] ||
+    rm -f -- "$STATE/active-task" "$STOPPED" "$STATE/task-models.yml" "$STATE/task-config.yml"
+
+  say "Review"
+  local head
+  head="$(remote_sha "$KAFES_FORK" "kafes/$task")"
+  if [[ -z "$head" ]]; then
+    info "the agent pushed no kafes/$task branch"
+  else
+    info "Open the PR as yourself (don't fetch or check out the branch on the host):"
+    info "  https://github.com/$FORK/compare/kafes-base/$task...$KAFES_OWNER:$REPO:kafes/$task?expand=1"
+    info "kafes/$task head now: $head"
+    info "Merge only if kafes-pr-check passed AND the PR's head commit is still $head."
+    info "Read every file under 'Review closely' line by line; tests are code that runs."
+    info "Then merge kafes-base/$task into your feature branch on GitHub, and pull:"
+    info "  https://github.com/$FORK/compare/<feature-branch>...kafes-base/$task?expand=1"
+  fi
+  return "$status"
+}
+
+# --- teardown -----------------------------------------------------------------
+
+cmd_teardown() {
+  load_config
+  warn "This dismantles the whole sandbox, not one task."
+  confirm "Continue?" || exit 0
+
+  say "1. Tasks and services"
+  [[ ! -e "$STATE/active-task" ]] || cmd_task_end "$(cat "$STATE/active-task")" || true
+  local dir task
+  for dir in "$TASKS"/*/; do
+    [[ -d "$dir" ]] || continue
+    task="$(basename "$dir")"
+    valid_name "$task" || die "unexpected entry $dir; inspect it without entering it"
+    ws "$task" remove dev || die "workshop remove failed for $task; fix it first"
+    rm -rf -- "${TASKS:?}/$task"
+  done
+  stop_services || true
+  info "no task workshops or host services remain"
+
+  say "2. Remote credentials"
+  manual \
+    "Delete the GitHub App BEFORE deleting $KAFES_OWNER:" \
+    "  https://github.com/organizations/$KAFES_OWNER/settings/apps/${KAFES_NAME%\[bot\]}/advanced" \
+    "  -> Delete GitHub App. (Machine user: https://github.com/settings/apps as that user.)" \
+    "  If the App serves other repositories, only remove this fork from its installation."
+  manual \
+    "Revoke the provider grants used for the OMP logins:" \
+    "  OpenRouter key: https://openrouter.ai/settings/keys" \
+    "  GitHub Copilot OAuth grant: https://github.com/settings/applications" \
+    "  Revoke only grants that belong to this setup."
+  if confirm "Log this host's broker out of github-copilot and openrouter? (all of the host, not one task)"; then
+    env -u OMP_AUTH_BROKER_URL "$OMP" auth-broker logout github-copilot || true
+    env -u OMP_AUTH_BROKER_URL "$OMP" auth-broker logout openrouter || true
+  fi
+
+  say "3. GitHub repository settings"
+  local before
+  before="$(cat "$STATE/default-branch-before" 2>/dev/null || true)"
+  manual \
+    "Close leftover sandbox and dummy PRs on $FORK without merging." \
+    "Restore the default branch of $FORK to '${before:-its original branch}':" \
+    "  https://github.com/$FORK/settings" \
+    "Delete the kafes-base/** ruleset: https://github.com/$FORK/settings/rules" \
+    "Delete the KAFES_FORK and KAFES_EMAIL variables:" \
+    "  https://github.com/$FORK/settings/variables/actions" \
+    "Restore the Actions setting if you changed it only for this:" \
+    "  https://github.com/$FORK/settings/actions"
+  if [[ -n "$before" ]] && [[ "$(gh_api "/repos/$FORK" | jq -r .default_branch)" != "$before" ]]; then
+    die "the default branch is not $before yet"
+  fi
+  local refs
+  refs="$("${GIT_ANON[@]}" ls-remote "https://github.com/$FORK.git" 'refs/heads/kafes-base/*' refs/heads/kafes-checks | cut -f2)"
+  if [[ -n "$refs" ]]; then
+    info "Branches on $FORK:"
+    printf '      %s\n' $refs # one ref per line
+    if confirm "Delete these branches? (save reviewed work first)"; then
+      manual \
+        "Delete them yourself, in another terminal, with your own credentials:" \
+        "" \
+        "  git -C '$CHECKOUT' push origin --delete $(tr '\n' ' ' <<<"$refs")" \
+        ""
+      [[ -z "$("${GIT_ANON[@]}" ls-remote "https://github.com/$FORK.git" 'refs/heads/kafes-base/*' refs/heads/kafes-checks)" ]] ||
+        warn "some kafes branches are still on $FORK"
+    fi
+  fi
+  if git -C "$CHECKOUT" show-ref --verify --quiet refs/heads/kafes-checks &&
+    confirm "Delete the local kafes-checks branch in $CHECKOUT?"; then
+    git -C "$CHECKOUT" branch -D kafes-checks
+  fi
+  manual \
+    "On $KAFES_FORK, delete leftover branches, or the whole fork if it was made for this:" \
+    "  https://github.com/$KAFES_FORK/settings -> Delete this repository" \
+    "LAST, once the App is confirmed deleted and $KAFES_OWNER has no other use," \
+    "delete it: https://github.com/organizations/$KAFES_OWNER/settings/profile" \
+    "Never delete your own fork or upstream."
+
+  say "4. LXD network ACL"
+  if [[ -n "${WORKSHOP_BRIDGE:-}" ]] && sudo lxc network show "$WORKSHOP_BRIDGE" >/dev/null 2>&1; then
+    if [[ -n "${BRIDGE_ACLS_BEFORE:-}" ]]; then
+      sudo lxc network set "$WORKSHOP_BRIDGE" security.acls="$BRIDGE_ACLS_BEFORE"
+    else
+      sudo lxc network unset "$WORKSHOP_BRIDGE" security.acls
+    fi
+    info "$WORKSHOP_BRIDGE ACLs restored to '${BRIDGE_ACLS_BEFORE:-}'"
+  fi
+  if sudo lxc network acl show "$ACL" >/dev/null 2>&1; then
+    sudo lxc network acl delete "$ACL" || warn "$ACL is still referenced elsewhere; left in place"
+  fi
+
+  say "5. Local files"
+  rm -f -- "$PUSH_CFG/app.pem" "$PUSH_CFG/client.token" "$PUSH_CFG/client.gitconfig" \
+    "$GATEWAY_CFG/clients.json" "$GATEWAY_CFG/clients.json.tmp"
+  rm -f -- "$SANDBOX"/{dev.yaml,setup-workshop.sh,kafes-policy.yml,kafes-prompt.md} \
+    "$SANDBOX"/{bunfig.toml,kafes-push-proxy.ts,kafes-pr-check.yml} \
+    "$SANDBOX/sandbox.env" "$STATE/default-branch-before" "$STATE/active-task" \
+    "$STOPPED" "$STATE/task-models.yml" "$STATE/task-config.yml" "$SANDBOX/kafes"
+  if [[ -L "$BIN_LINK" && "$(readlink "$BIN_LINK")" == "$SANDBOX/kafes" ]]; then
+    rm -f -- "$BIN_LINK"
+  fi
+  # rmdir refuses non-empty directories on purpose: inspect what's left.
+  rmdir -- "$STATE" "$SANDBOX" "$TASKS" "$KAFES" "$PUSH_CFG" "$GATEWAY_CFG" "$HOME/.config/kafes" ||
+    warn "some directories are not empty; inspect them instead of deleting recursively"
+  info "delete any other copy of the App key by exact path"
+
+  say "6. Optional: sandbox-only tools"
+  if confirm "Uninstall the global OMP package? (n if you use OMP elsewhere)"; then
+    "$BUN" remove --global @oh-my-pi/pi-coding-agent || true
+  fi
+  info "Remove Workshop and LXD only if installed for this and holding nothing else:"
+  info "  sudo snap remove workshop; sudo snap remove lxd  (never purge a shared LXD)"
+  say "Teardown complete."
+}
+
+# --- Dispatch -----------------------------------------------------------------
+
+[[ "$PWD" != "$TASKS"* ]] || die "never run this from inside $TASKS"
+need jq "install it with: sudo apt install jq"
+case "${1:-}" in
+setup) cmd_setup ;;
+task)
+  case "${2:-}" in
+  new) cmd_task_new "${3:-}" "${4:-}" ;;
+  shell) cmd_task_shell "${3:-}" ;;
+  stop) cmd_task_stop "${3:-}" ;;
+  start) cmd_task_start "${3:-}" ;;
+  end) cmd_task_end "${3:-}" ;;
+  *) die "usage: task new <task> <feature-branch> | task shell|stop|start|end <task>" ;;
+  esac
+  ;;
+teardown) cmd_teardown ;;
+*)
+  sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//'
+  exit 2
+  ;;
+esac
